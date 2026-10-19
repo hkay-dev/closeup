@@ -64,7 +64,7 @@ A synthetic HEVC sample decoded all 12 frames at 3840x2160 using hardware decodi
 
 USB camera capture, virtual-camera publishing, and preview resizing still need an interactive check with the phone. The headless checks did not start a camera sender or a preview.
 
-The built app launched and is running. Automated menu inspection timed out, so menu actions still need a manual check.
+Automated menu inspection timed out, so menu actions still need a manual check.
 
 ## Dependencies and references
 
