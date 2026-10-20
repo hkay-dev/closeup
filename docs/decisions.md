@@ -24,3 +24,6 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-19: Apache-2.0 license (Harsha's call), matching the bundled scrcpy server. kata:android-webcam#w5gj
 - 2026-10-19: Launch at login is a setting, off by default (Harsha's call), through `SMAppService.mainApp`.
 - 2026-10-19: Ship our own build of scrcpy-server 5.0.1 (Harsha's call): `server/webcam.patch` adds exposure, white balance, focus lock, noise reduction and edge options plus control message type 100, built from source by `scripts/build-server.sh`. This replaces the 5.0.1 download line. kata:android-webcam#wpc4
+- 2026-10-20: The app has two motions, a 0.2 s ease-out fade between picture states and a slow pulse on the live badge dot and the waiting status dot. Both turn off under Reduce Motion. kata:android-webcam#jfgj
+- 2026-10-20: The menu bar icon has three looks: `camera` when off, `camera.fill` when live, `camera.badge.ellipsis` while starting, switching lens, reconnecting or stopping. A hot phone stays in the menu and its notification, since SF Symbols has no camera-with-warning badge. kata:android-webcam#be95
+- 2026-10-20: The preview window keeps 16:9, since every capture mode is 16:9, and remembers its size and place. kata:android-webcam#kehx

@@ -5,8 +5,7 @@ final class MenuHeaderView: NSView {
     enum Dot: Equatable { case off, ready, live, wait }
     struct Picture: Equatable {
         var badge: String?
-        var veilTitle: String?
-        var veilText: String?
+        var veil: PreviewView.Veil?
     }
     struct Content: Equatable {
         var dot: Dot
@@ -19,12 +18,20 @@ final class MenuHeaderView: NSView {
 
     static let width: CGFloat = 280
     private static let pictureSize = NSSize(width: 268, height: 151)
+    private static let temperature: MeasurementFormatter = {
+        let formatter = MeasurementFormatter()
+        formatter.numberFormatter.maximumFractionDigits = 0
+        return formatter
+    }()
+    private static let spokenTemperature: MeasurementFormatter = {
+        let formatter = MeasurementFormatter()
+        formatter.numberFormatter.maximumFractionDigits = 0
+        formatter.unitStyle = .long
+        return formatter
+    }()
 
-    private let picture = PreviewView(frame: NSRect(origin: .zero, size: MenuHeaderView.pictureSize))
-    private let veil = NSView()
-    private let veilTitle = NSTextField(labelWithString: "")
-    private let veilText = NSTextField(wrappingLabelWithString: "")
-    private let badge = NSTextField(labelWithString: "")
+    private let picture = PreviewView(frame: NSRect(origin: .zero, size: MenuHeaderView.pictureSize), titleSize: 13, textSize: 12)
+    private let badge = LiveBadge()
     private let dot = NSView()
     private let statusLabel = NSTextField(labelWithString: "")
     private let modelLabel = NSTextField(labelWithString: "")
@@ -45,32 +52,8 @@ final class MenuHeaderView: NSView {
         picture.layer?.cornerRadius = 8
         picture.layer?.masksToBounds = true
         picture.translatesAutoresizingMaskIntoConstraints = false
-
-        // The veil and badge sit on the video, so they use white text on a dark wash like the system's video overlays.
-        veil.wantsLayer = true
-        veil.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
-        veil.translatesAutoresizingMaskIntoConstraints = false
-        veilTitle.font = .boldSystemFont(ofSize: 13)
-        veilText.font = .systemFont(ofSize: 12)
-        for label in [veilTitle, veilText] {
-            label.textColor = .white
-            label.alignment = .center
-            label.preferredMaxLayoutWidth = Self.pictureSize.width - 32
-        }
-        let veilStack = NSStackView(views: [veilTitle, veilText])
-        veilStack.orientation = .vertical
-        veilStack.spacing = 3
-        veilStack.translatesAutoresizingMaskIntoConstraints = false
-        veil.addSubview(veilStack)
-        picture.addSubview(veil)
-
-        badge.font = .systemFont(ofSize: 11, weight: .semibold)
-        badge.textColor = .white
-        badge.drawsBackground = true
-        badge.backgroundColor = NSColor.black.withAlphaComponent(0.55)
-        badge.wantsLayer = true
-        badge.layer?.cornerRadius = 5
-        badge.layer?.masksToBounds = true
+        badge.alphaValue = 0
+        badge.isHidden = true
         badge.translatesAutoresizingMaskIntoConstraints = false
         picture.addSubview(badge)
 
@@ -78,13 +61,14 @@ final class MenuHeaderView: NSView {
         dot.layer?.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.setAccessibilityElement(false)
-        statusLabel.font = .boldSystemFont(ofSize: 13)
+        // Fixed-width digits keep the live clock from shifting the line every second.
+        statusLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .bold)
         statusLabel.lineBreakMode = .byTruncatingTail
         let statusRow = NSStackView(views: [dot, statusLabel])
         statusRow.spacing = 7
 
         for label in [modelLabel, tempLabel, batteryLabel] {
-            label.font = .systemFont(ofSize: 12)
+            label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             label.textColor = .secondaryLabelColor
         }
         for icon in [tempIcon, batteryIcon, boltIcon] {
@@ -120,12 +104,6 @@ final class MenuHeaderView: NSView {
             stack.widthAnchor.constraint(equalToConstant: Self.width),
             picture.widthAnchor.constraint(equalToConstant: Self.pictureSize.width),
             picture.heightAnchor.constraint(equalToConstant: Self.pictureSize.height),
-            veil.leadingAnchor.constraint(equalTo: picture.leadingAnchor),
-            veil.trailingAnchor.constraint(equalTo: picture.trailingAnchor),
-            veil.topAnchor.constraint(equalTo: picture.topAnchor),
-            veil.bottomAnchor.constraint(equalTo: picture.bottomAnchor),
-            veilStack.centerXAnchor.constraint(equalTo: veil.centerXAnchor),
-            veilStack.centerYAnchor.constraint(equalTo: veil.centerYAnchor),
             badge.leadingAnchor.constraint(equalTo: picture.leadingAnchor, constant: 8),
             badge.topAnchor.constraint(equalTo: picture.topAnchor, constant: 8),
             dot.widthAnchor.constraint(equalToConstant: 8),
@@ -136,27 +114,30 @@ final class MenuHeaderView: NSView {
 
     required init?(coder: NSCoder) { fatalError("Use init().") }
 
+    // The menu's window comes and goes with each open, so the pulses go back on when it shows again.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { pulse() }
+    }
+
     func update(_ content: Content) {
         guard content != self.content else { return }
         self.content = content
 
-        switch content.dot {
-        case .off: dot.layer?.backgroundColor = NSColor.systemGray.cgColor
-        case .ready: dot.layer?.backgroundColor = NSColor.systemGreen.cgColor
-        case .live: dot.layer?.backgroundColor = NSColor.systemRed.cgColor
-        case .wait: dot.layer?.backgroundColor = NSColor.systemOrange.cgColor
+        let color: NSColor = switch content.dot {
+        case .off: .systemGray
+        case .ready: .systemGreen
+        case .live: .systemRed
+        case .wait: .systemOrange
         }
+        dot.layer?.backgroundColor = color.cgColor
         statusLabel.stringValue = content.status
 
         picture.isHidden = content.picture == nil
-        if let shown = content.picture {
-            veilTitle.stringValue = shown.veilTitle ?? ""
-            veilText.stringValue = shown.veilText ?? ""
-            veilText.isHidden = shown.veilText == nil
-            veil.isHidden = shown.veilTitle == nil && shown.veilText == nil
-            badge.stringValue = shown.badge.map { " ● \($0) " } ?? ""
-            badge.isHidden = shown.badge == nil
-        }
+        picture.setVeil(content.picture?.veil)
+        if let text = content.picture?.badge { badge.label.stringValue = text }
+        fade(badge, to: content.picture?.badge == nil ? 0 : 1)
+        pulse()
 
         readings.isHidden = content.model == nil && content.stats == nil
         modelLabel.stringValue = content.model ?? ""
@@ -166,12 +147,13 @@ final class MenuHeaderView: NSView {
         boltIcon.isHidden = stats?.charging != true
         if let stats {
             let hot = stats.isHot
+            let celsius = Measurement(value: stats.temperatureC, unit: UnitTemperature.celsius)
             tempIcon.image = NSImage(systemSymbolName: hot ? "thermometer.high" : "thermometer.medium",
                                      accessibilityDescription: hot ? "Phone is hot" : "Phone temperature")
             tempIcon.contentTintColor = hot ? .systemOrange : .secondaryLabelColor
-            tempLabel.stringValue = String(format: "%.0f °C", stats.temperatureC)
+            tempLabel.stringValue = Self.temperature.string(from: celsius)
             tempLabel.textColor = hot ? .systemOrange : .secondaryLabelColor
-            tempLabel.setAccessibilityLabel(String(format: "Phone at %.0f degrees Celsius%@", stats.temperatureC, hot ? ", hot" : ""))
+            tempLabel.setAccessibilityLabel("Phone at \(Self.spokenTemperature.string(from: celsius))\(hot ? ", hot" : "")")
             let level = [100, 75, 50, 25].first { stats.batteryPercent >= $0 - 12 } ?? 0
             batteryIcon.image = NSImage(systemSymbolName: "battery.\(level)", accessibilityDescription: "Battery")
             batteryLabel.stringValue = "\(stats.batteryPercent)%"
@@ -185,6 +167,12 @@ final class MenuHeaderView: NSView {
         setFrameSize(NSSize(width: Self.width, height: stack.fittingSize.height))
     }
 
+    /// The badge's dot pulses while live and the status dot while starting or reconnecting.
+    private func pulse() {
+        Motion.pulse(badge.dot, content?.picture?.badge != nil)
+        Motion.pulse(dot.layer, content?.dot == .wait)
+    }
+
     /// Shows a frame in the thumbnail. Main thread only.
     func show(_ frame: CVPixelBuffer) {
         guard !picture.isHidden else { return }
@@ -195,5 +183,41 @@ final class MenuHeaderView: NSView {
         } catch {}
     }
 
-    func clearPicture() { picture.display.flushAndRemoveImage() }
+    func clearPicture() { picture.clear() }
+}
+
+/// A red dot and the running clock on the live thumbnail, in a pill like the system's recording indicators.
+private final class LiveBadge: NSView {
+    let label = NSTextField(labelWithString: "")
+    let dot = CALayer()
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        layer?.cornerRadius = 9
+        dot.backgroundColor = NSColor.systemRed.cgColor
+        dot.cornerRadius = 3
+        layer?.addSublayer(dot)
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 18),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init().") }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dot.frame = CGRect(x: 8, y: (bounds.height - 6) / 2, width: 6, height: 6)
+        CATransaction.commit()
+    }
 }

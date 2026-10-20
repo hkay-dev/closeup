@@ -4,33 +4,6 @@ import CoreMedia
 import UserNotifications
 import VideoToolbox
 
-final class PreviewView: NSView {
-    let display = AVSampleBufferDisplayLayer()
-    private let sampler = FrameSampler(fps: 30)
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer = CALayer()
-        layer?.backgroundColor = NSColor.black.cgColor
-        display.videoGravity = .resizeAspect
-        layer?.addSublayer(display)
-    }
-    required init?(coder: NSCoder) { fatalError("Use init(frame:).") }
-    override func layout() { super.layout(); display.frame = bounds }
-
-    func show(_ frame: CVPixelBuffer) throws {
-        let sample = try sampler.sample(frame)
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) {
-            let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dictionary,
-                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-        if display.status == .failed { display.flush() }
-        display.enqueue(sample)
-    }
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private static let obsBundleID = "com.obsproject.obs-studio"
     private static let coolModeIndex = CaptureMode.all.firstIndex { $0.title == "1080p / 30 fps" } ?? 0
@@ -98,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var signalSources: [DispatchSourceSignal] = []
     private var window: NSWindow?
     private var clock: Timer?
+    private var statusSymbol = ""
 
     // Written by the capture thread, read on main. At most one frame waits for the preview and one for the header.
     private let frameLock = NSLock()
@@ -211,14 +185,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         headerOpen = false
         headerFrame = nil
         frameLock.unlock()
+        // A live frame would be stale by the next open; a reconnecting one stays frozen under its veil.
+        if live { header.clearPicture() }
         clock?.invalidate()
         clock = nil
     }
 
     private func refreshUI() {
         let running = capture.running
-        header.update(headerContent())
-        statusItem.button?.image = NSImage(systemSymbolName: running ? "camera.fill" : "camera", accessibilityDescription: appName)
+        let content = headerContent()
+        header.update(content)
+        let symbol = !running ? "camera" : live && !stopRequested ? "camera.fill" : "camera.badge.ellipsis"
+        if symbol != statusSymbol {
+            statusSymbol = symbol
+            statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        }
+        statusItem.button?.toolTip = "\(appName): \(content.status)"
+        statusItem.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
+        if let view = window?.contentView as? PreviewView {
+            view.setVeil(content.picture == nil
+                ? .init(title: "No picture yet", text: "Finish setup from the menu bar, then start the webcam.")
+                : content.picture?.veil)
+        }
 
         if running {
             mainAction.title = "Stop Webcam"
@@ -253,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                                  model: device.model, stats: stats, note: note)
             if stopRequested {
                 content.status = "Stopping"
-                content.picture = .init(veilTitle: "Stopping the webcam")
+                content.picture = .init(veil: .init(title: "Stopping the webcam"))
             } else if live, let since = liveSince {
                 let time = Self.elapsed(since)
                 content.dot = .live
@@ -261,14 +249,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 content.picture = .init(badge: "LIVE \(time)")
             } else if switchingLens {
                 content.status = "Switching camera"
-                content.picture = .init(veilTitle: "Switching camera on \(device.model)", veilText: "The camera stays open for your call.")
+                content.picture = .init(veil: .init(title: "Switching camera on \(device.model)", text: "The camera stays open for your call."))
             } else if liveSince != nil {
                 content.status = "Reconnecting"
-                content.picture = .init(veilTitle: "Plug the phone back in",
-                                        veilText: "The camera stays open for your call and picks up again on its own.")
+                content.picture = .init(veil: .init(title: "Plug the phone back in",
+                                                    text: "The camera stays open for your call and picks up again on its own."))
             } else {
-                content.picture = .init(veilTitle: "Starting \(device.model)",
-                                        veilText: "The phone's camera can take a few seconds to open.")
+                content.picture = .init(veil: .init(title: "Starting \(device.model)",
+                                                    text: "The phone's camera can take a few seconds to open."))
             }
             return content
         }
@@ -282,8 +270,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         let model = devices.first { $0.serial == selectedSerial }?.model
         return .init(dot: .ready, status: "Ready",
-                     picture: .init(veilTitle: model.map { "\($0) is ready" } ?? "Ready",
-                                    veilText: "Start the webcam to see the picture."),
+                     picture: .init(veil: .init(title: model.map { "\($0) is ready" } ?? "Ready",
+                                                text: "Start the webcam to see the picture.")),
                      model: model, stats: nil, note: note)
     }
 
@@ -489,6 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         autoStartBlocked = device.serial
         endSyncTest(reason: "The webcam stopped.")
         header.clearPicture()
+        (window?.contentView as? PreviewView)?.clear()
         if !userStopped && !quiet {
             note = message
             notify("Webcam stopped", message)
@@ -681,14 +670,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func togglePreview() {
         if let window, window.isVisible { window.close(); return }
-        let view = PreviewView(frame: NSRect(x: 0, y: 0, width: 960, height: 540))
+        let view = PreviewView(frame: NSRect(x: 0, y: 0, width: 960, height: 540), titleSize: 17, textSize: 14)
         let previewWindow = NSWindow(contentRect: view.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                      backing: .buffered, defer: false)
         previewWindow.title = "\(appName) Preview"
         previewWindow.contentView = view
+        // Every capture mode is 16:9, so the window keeps that shape instead of growing black bars.
+        previewWindow.contentAspectRatio = NSSize(width: 16, height: 9)
+        previewWindow.contentMinSize = NSSize(width: 320, height: 180)
         previewWindow.isReleasedWhenClosed = false
         previewWindow.delegate = self
-        previewWindow.center()
+        if !previewWindow.setFrameUsingName("Preview") { previewWindow.center() }
+        previewWindow.setFrameAutosaveName("Preview")
         window = previewWindow
         setPreviewOpen(true)
         previewWindow.makeKeyAndOrderFront(nil)
