@@ -6,7 +6,7 @@ This is a development scaffold. The Android transport and camera output need a l
 
 ## Build
 
-This Mac has Xcode 27 beta, ADB, and scrcpy 5.0 installed. The build uses the beta toolchain only for its child commands and bundles the installed, checksum-checked scrcpy server. It does not change the selected system toolchain.
+You need Xcode or the Swift toolchain, and `adb` from Android platform tools. The script uses the selected Xcode; set `DEVELOPER_DIR` to use another. On the first build it downloads scrcpy-server 5.0.1 into `build/cache` and checks its SHA-256 on every build. Set `SCRCPY_SERVER_PATH` to use a local copy; it is checked the same way.
 
 ```sh
 ./scripts/build-app.sh
@@ -28,11 +28,13 @@ The app captures video only. It does not record footage, open a microphone, capt
 
 ## Data flow
 
-ADB starts the pinned scrcpy-server 5.0 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets. VideoToolbox decodes them to NV12 pixel buffers. CoreMediaIO sends those buffers directly to the OBS extension's sink stream. An optional preview displays the latest decoded buffer.
+ADB starts the pinned scrcpy-server 5.0.1 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets. VideoToolbox decodes them to NV12 pixel buffers. CoreMediaIO sends those buffers directly to the OBS extension's sink stream. An optional preview displays the latest decoded buffer.
 
 Preview dimensions never become camera-output dimensions. There is no scrcpy desktop window or OBS scene in this path.
 
-The app owns its temporary server path, forwarding entry, and child process. Stop and Quit clean up only those resources. It never stops the shared ADB server.
+The app owns its temporary server path, forwarding entry, and child process. Stop and Quit clean up only those resources. If the app is killed before it can clean up, the next launch removes what that session recorded. It never stops the shared ADB server.
+
+If the stream drops after it has started, for example when the cable comes loose, the app keeps the virtual camera open and reconnects once the phone is back. A session that fails before its first frame stops with the error instead.
 
 ## Modes
 
@@ -43,7 +45,7 @@ The app owns its temporary server path, forwarding entry, and child process. Sto
 
 Device support varies. Requested capture size is checked against the server's session metadata. There is no silent resolution fallback.
 
-The stock OBS extension advertises 1080p60 even when its producer sends 4K buffers. The previous CLI experiment received 4K60 buffers, but explicit 4K and 120 fps format requests failed. This app inherits that extension limitation. Its direct sender has not yet been checked with a phone or a receiving app.
+The stock OBS extension advertises 1080p60 even when its producer sends 4K buffers. The previous CLI experiment received 4K60 buffers, but explicit 4K and 120 fps format requests failed. This app inherits that extension limitation. The app starts in 1080p at 30 fps and remembers the last phone and mode.
 
 ## Headless checks
 
@@ -68,8 +70,8 @@ Automated menu inspection timed out, so menu actions still need a manual check.
 
 ## Dependencies and references
 
-The local prototype uses `/opt/homebrew/bin/adb`. A distributable app would need its own dependency packaging.
+The app needs `adb` from Android platform tools. It looks in `$ADB`, `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`, `/opt/homebrew/bin` and `/usr/local/bin`. A distributable app would need its own dependency packaging.
 
-The bundled [scrcpy server](https://github.com/Genymobile/scrcpy/tree/v5.0) is Apache-2.0 software from Genymobile. Its license is included in the app's resources. Its [5.0 server protocol](https://github.com/Genymobile/scrcpy/blob/v5.0/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java) is pinned to the matching server version.
+The bundled [scrcpy server](https://github.com/Genymobile/scrcpy/tree/v5.0.1) is Apache-2.0 software from Genymobile. Its license is included in the app's resources. Its [5.0.1 server protocol](https://github.com/Genymobile/scrcpy/blob/v5.0.1/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java) is pinned to the matching server version.
 
 The [pyvirtualcam macOS backend](https://github.com/letmaik/pyvirtualcam/tree/main/pyvirtualcam/native_macos_obs_cmioextension) documents the OBS sink-stream route. This app uses native CoreMediaIO APIs and does not include a Python runtime.

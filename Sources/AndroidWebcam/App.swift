@@ -5,6 +5,7 @@ import VideoToolbox
 
 final class PreviewView: NSView {
     let display = AVSampleBufferDisplayLayer()
+    private let sampler = FrameSampler(fps: 30)
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -17,7 +18,7 @@ final class PreviewView: NSView {
     override func layout() { super.layout(); display.frame = bounds }
 
     func show(_ frame: CVPixelBuffer) throws {
-        let sample = try makeVideoSample(frame, fps: 30)
+        let sample = try sampler.sample(frame)
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) {
             let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
             CFDictionarySetValue(dictionary,
@@ -30,6 +31,10 @@ final class PreviewView: NSView {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
+    private static let obsBundleID = "com.obsproject.obs-studio"
+    private static let serialKey = "phoneSerial"
+    private static let modeKey = "captureMode"
+
     private let capture = CaptureController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
@@ -40,13 +45,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let modeMenu = NSMenu()
     private var devices: [AndroidDevice] = []
     private var selectedSerial: String?
-    private var modeIndex = 0
+    private var modeIndex = CaptureMode.all.firstIndex { $0.title == "1080p / 30 fps" } ?? 0
     private var discoveryInProgress = false
     private var discoveryTimer: Timer?
-    private var previewTimer: Timer?
+    private var signalSources: [DispatchSourceSignal] = []
     private var window: NSWindow?
+    // Written by the capture thread, read on main. At most one frame waits for the preview.
+    private let previewLock = NSLock()
+    private var previewOpen = false
+    private var pendingFrame: CVPixelBuffer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let savedMode = UserDefaults.standard.string(forKey: Self.modeKey)
+        if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
         statusItem.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: "Android Webcam")
         statusItem.button?.toolTip = "Android Webcam"
         status.isEnabled = false
@@ -77,8 +88,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                                     accessibilityDescription: "Android Webcam")
             self.updateControls()
         }
+        capture.onFrame = { [weak self] frame in self?.queuePreview(frame) }
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(applicationLaunched(_:)),
+                                                          name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        for signalNumber in [SIGTERM, SIGINT] {
+            signal(signalNumber, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
+            source.setEventHandler { NSApp.terminate(nil) }
+            source.resume()
+            signalSources.append(source)
+        }
         refreshDevices()
-        discoveryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.refreshDevices() }
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refreshDevices() }
+        RunLoop.main.add(timer, forMode: .common)
+        discoveryTimer = timer
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard capture.running else { return .terminateNow }
+        status.title = "Stopping webcam..."
+        capture.stop { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     func menuWillOpen(_ menu: NSMenu) { refreshDevices(); updateControls() }
@@ -91,17 +121,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.discoveryInProgress = false
+                let before = (self.devices, self.selectedSerial)
                 switch result {
                 case let .success(devices):
                     self.devices = devices
-                    if !devices.contains(where: { $0.serial == self.selectedSerial }) {
+                    // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
+                    let savedSerial = UserDefaults.standard.string(forKey: Self.serialKey)
+                    if devices.contains(where: { $0.serial == savedSerial }) {
+                        self.selectedSerial = savedSerial
+                    } else if !devices.contains(where: { $0.serial == self.selectedSerial }) {
                         self.selectedSerial = devices.first(where: \.authorized)?.serial
                     }
                     self.status.title = devices.isEmpty ? "No USB Android phone connected" :
                         devices.contains(where: \.authorized) ? "Ready to start" : "Approve USB debugging on your phone"
                 case let .failure(error): self.status.title = error.localizedDescription
                 }
-                self.updateControls()
+                // Rebuilding the Phone submenu while it's open loses the highlight, so only rebuild on a change.
+                if before != (self.devices, self.selectedSerial) { self.updateControls() }
             }
         }
     }
@@ -122,18 +158,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         for item in modeMenu.items { item.state = item.tag == modeIndex ? .on : .off; item.isEnabled = !capture.running }
     }
 
-    @objc private func selectPhone(_ sender: NSMenuItem) { selectedSerial = devices[sender.tag].serial; updateControls() }
-    @objc private func selectMode(_ sender: NSMenuItem) { modeIndex = sender.tag; updateControls() }
+    @objc private func selectPhone(_ sender: NSMenuItem) {
+        selectedSerial = devices[sender.tag].serial
+        UserDefaults.standard.set(selectedSerial, forKey: Self.serialKey)
+        updateControls()
+    }
+
+    @objc private func selectMode(_ sender: NSMenuItem) {
+        modeIndex = sender.tag
+        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Self.modeKey)
+        updateControls()
+    }
 
     @objc private func toggleCapture() {
         if capture.running { capture.stop(); status.title = "Stopping webcam..."; return }
         guard let device = devices.first(where: { $0.serial == selectedSerial && $0.authorized }) else { return }
-        if !NSRunningApplication.runningApplications(withBundleIdentifier: "com.obsproject.obs-studio").isEmpty {
+        if !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty {
             status.title = "Quit OBS before starting this camera sender"
             return
         }
         capture.start(device: device, mode: CaptureMode.all[modeIndex])
         updateControls()
+    }
+
+    @objc private func applicationLaunched(_ notification: Notification) {
+        let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        guard capture.running, app?.bundleIdentifier == Self.obsBundleID else { return }
+        status.title = "OBS opened. Don't start its virtual camera while this one runs."
     }
 
     @objc private func togglePreview() {
@@ -147,28 +198,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         previewWindow.delegate = self
         previewWindow.center()
         window = previewWindow
+        setPreviewOpen(true)
         previewWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        previewTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self, weak view] _ in
-            guard let self, let view, let frame = self.capture.latestFrame else { return }
-            do { try view.show(frame) }
-            catch { self.status.title = "Preview failed. \(error.localizedDescription)" }
-        }
         updateControls()
     }
 
     func windowWillClose(_ notification: Notification) {
-        previewTimer?.invalidate(); previewTimer = nil; window = nil
+        setPreviewOpen(false)
+        window = nil
         updateControls()
     }
 
+    private func setPreviewOpen(_ open: Bool) {
+        previewLock.lock()
+        previewOpen = open
+        pendingFrame = nil
+        previewLock.unlock()
+    }
+
+    /// Called on the capture thread. Keeps only the newest frame and schedules one main-queue hop for it;
+    /// frames that arrive before main runs replace it instead of queueing more work.
+    private func queuePreview(_ frame: CVPixelBuffer) {
+        previewLock.lock()
+        guard previewOpen else { previewLock.unlock(); return }
+        let hopNeeded = pendingFrame == nil
+        pendingFrame = frame
+        previewLock.unlock()
+        if hopNeeded { DispatchQueue.main.async { [weak self] in self?.showPendingFrame() } }
+    }
+
+    private func showPendingFrame() {
+        previewLock.lock()
+        let frame = pendingFrame
+        pendingFrame = nil
+        previewLock.unlock()
+        guard let frame, let view = window?.contentView as? PreviewView else { return }
+        do { try view.show(frame) }
+        catch { status.title = "Preview failed. \(error.localizedDescription)" }
+    }
+
     @objc private func quitApp() {
-        discoveryTimer?.invalidate(); previewTimer?.invalidate()
-        if capture.running {
-            status.title = "Stopping webcam..."
-            capture.onStatus = { _, active in if !active { NSApp.terminate(nil) } }
-            capture.stop()
-        } else { NSApp.terminate(nil) }
+        discoveryTimer?.invalidate()
+        NSApp.terminate(nil)
     }
 }
 
@@ -196,7 +268,8 @@ enum AndroidWebcamApp {
         catch { driverError = error.localizedDescription }
         let report: [String: Any] = [
             "usb_devices": devices.map { ["serial": $0.serial, "model": $0.model, "status": $0.status] },
-            "scrcpy_server_version": "5.0", "bundled_server": ADB.serverURL != nil,
+            "scrcpy_server_version": ScrcpyServer.version, "bundled_server": ADB.serverURL != nil,
+            "adb": (try? ADB.executable().path) ?? "",
             "obs_camera_installed": driver, "obs_camera_error": driverError ?? "",
             "hevc_hardware_supported": VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC),
             "camera_started": false, "preview_started": false

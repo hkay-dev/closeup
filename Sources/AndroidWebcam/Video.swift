@@ -88,6 +88,9 @@ final class HEVCDecoder {
     private var format: CMVideoFormatDescription?
     private var session: VTDecompressionSession?
     private var parameterSets: [Int: Data] = [:]
+    /// The VPS, SPS and PPS that `format` was built from.
+    private var formatParameterSets: [Int: Data] = [:]
+    private var firstFrameLogged = false
     let onFrame: (CVPixelBuffer) -> Void
     let onError: (Error) -> Void
     private(set) var hardwareAccelerated = false
@@ -103,7 +106,7 @@ final class HEVCDecoder {
         for unit in units where (32...34).contains(AnnexB.nalType(unit)) {
             parameterSets[AnnexB.nalType(unit)] = unit
         }
-        if session == nil, parameterSets.count == 3 { try createSession() }
+        if parameterSets.count == 3, parameterSets != formatParameterSets { try updateFormat() }
         let pictures = units.filter { AnnexB.nalType($0) < 32 }
         guard !pictures.isEmpty else { return }
         guard let session, let format else { throw WebcamError(message: "HEVC picture arrived before its configuration.") }
@@ -131,16 +134,29 @@ final class HEVCDecoder {
             flags: [._EnableAsynchronousDecompression], frameRefcon: nil, infoFlagsOut: nil), "Decoding HEVC")
     }
 
-    private func createSession() throws {
+    /// Builds the format from the latest VPS, SPS and PPS, and replaces the session
+    /// when the current one can't decode that format (for example after the phone's encoder restarts).
+    private func updateFormat() throws {
         let vps = parameterSets[32]!, sps = parameterSets[33]!, pps = parameterSets[34]!
+        var newFormat: CMVideoFormatDescription?
         try vps.withUnsafeBytes { v in try sps.withUnsafeBytes { s in try pps.withUnsafeBytes { p in
             var pointers = [v.bindMemory(to: UInt8.self).baseAddress!, s.bindMemory(to: UInt8.self).baseAddress!, p.bindMemory(to: UInt8.self).baseAddress!]
             var lengths = [vps.count, sps.count, pps.count]
             try checkStatus(CMVideoFormatDescriptionCreateFromHEVCParameterSets(
                 allocator: kCFAllocatorDefault, parameterSetCount: 3, parameterSetPointers: &pointers,
                 parameterSetSizes: &lengths, nalUnitHeaderLength: 4, extensions: nil,
-                formatDescriptionOut: &format), "Reading the HEVC configuration")
+                formatDescriptionOut: &newFormat), "Reading the HEVC configuration")
         } } }
+        if session == nil || !VTDecompressionSessionCanAcceptFormatDescription(session!, formatDescription: newFormat!) {
+            endSession()
+            session = try makeSession(newFormat!)
+            firstFrameLogged = false
+        }
+        format = newFormat
+        formatParameterSets = parameterSets
+    }
+
+    private func makeSession(_ format: CMVideoFormatDescription) throws -> VTDecompressionSession {
         let specification = [kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true] as CFDictionary
         let attributes = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
@@ -150,37 +166,75 @@ final class HEVCDecoder {
             guard let ref else { return }
             let decoder = Unmanaged<HEVCDecoder>.fromOpaque(ref).takeUnretainedValue()
             if status != noErr { decoder.onError(WebcamError(message: "VideoToolbox returned error \(status).")) }
-            else if let image { decoder.onFrame(image) }
+            else if let image { decoder.logFirstFrame(image); decoder.onFrame(image) }
         }, decompressionOutputRefCon: Unmanaged.passUnretained(self).toOpaque())
-        try checkStatus(VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: format!,
+        var created: VTDecompressionSession?
+        try checkStatus(VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: format,
             decoderSpecification: specification, imageBufferAttributes: attributes,
-            outputCallback: &callback, decompressionSessionOut: &session), "Starting the hardware decoder")
+            outputCallback: &callback, decompressionSessionOut: &created), "Starting the hardware decoder")
         var value: Unmanaged<CFTypeRef>?
-        try checkStatus(VTSessionCopyProperty(session!, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
-            allocator: kCFAllocatorDefault, valueOut: &value), "Checking hardware decoding")
-        hardwareAccelerated = (value?.takeRetainedValue() as? Bool) == true
-        guard hardwareAccelerated else { throw WebcamError(message: "Hardware HEVC decoding is unavailable.") }
+        let status = VTSessionCopyProperty(created!, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
+            allocator: kCFAllocatorDefault, valueOut: &value)
+        hardwareAccelerated = status == noErr && (value?.takeRetainedValue() as? Bool) == true
+        guard hardwareAccelerated else {
+            VTDecompressionSessionInvalidate(created!)
+            throw WebcamError(message: "Hardware HEVC decoding is unavailable.")
+        }
+        return created!
+    }
+
+    /// Writes the first decoded frame's size, pixel format and color tags to stderr, once per session,
+    /// so color tags that recorders reject can be read from the log.
+    private func logFirstFrame(_ image: CVImageBuffer) {
+        guard !firstFrameLogged else { return }
+        firstFrameLogged = true
+        func tag(_ key: CFString) -> String {
+            CVBufferCopyAttachment(image, key, nil).map { "\($0)" } ?? "none"
+        }
+        let pixelFormat = CVPixelBufferGetPixelFormatType(image)
+        let fourCC = String(decoding: [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: pixelFormat >> $0) }, as: UTF8.self)
+        fputs("First frame \(CVPixelBufferGetWidth(image))x\(CVPixelBufferGetHeight(image)) \(fourCC)"
+            + " matrix=\(tag(kCVImageBufferYCbCrMatrixKey)) primaries=\(tag(kCVImageBufferColorPrimariesKey))"
+            + " transfer=\(tag(kCVImageBufferTransferFunctionKey))\n", stderr)
+    }
+
+    private func endSession() {
+        guard let session else { return }
+        VTDecompressionSessionWaitForAsynchronousFrames(session)
+        VTDecompressionSessionInvalidate(session)
+        self.session = nil
     }
 
     func finish() {
-        if let session {
-            VTDecompressionSessionWaitForAsynchronousFrames(session)
-            VTDecompressionSessionInvalidate(session)
-        }
-        session = nil
+        endSession()
         format = nil
+        formatParameterSets = [:]
     }
     deinit { finish() }
 }
 
-func makeVideoSample(_ frame: CVPixelBuffer, fps: Int32) throws -> CMSampleBuffer {
-    var format: CMVideoFormatDescription?
-    try checkStatus(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
-        imageBuffer: frame, formatDescriptionOut: &format), "Describing a decoded frame")
-    var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: fps),
-        presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
-    var sample: CMSampleBuffer?
-    try checkStatus(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault,
-        imageBuffer: frame, formatDescription: format!, sampleTiming: &timing, sampleBufferOut: &sample), "Preparing a decoded frame")
-    return sample!
+/// Wraps decoded frames in samples stamped with the host clock, reusing one format
+/// description until a frame's size, pixel format or color tags change.
+final class FrameSampler {
+    private let duration: CMTime
+    private var format: CMVideoFormatDescription?
+
+    init(fps: Int32) {
+        duration = CMTime(value: 1, timescale: fps)
+    }
+
+    /// Not thread-safe: give each consumer its own sampler.
+    func sample(_ frame: CVPixelBuffer) throws -> CMSampleBuffer {
+        if format == nil || !CMVideoFormatDescriptionMatchesImageBuffer(format!, imageBuffer: frame) {
+            format = nil
+            try checkStatus(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
+                imageBuffer: frame, formatDescriptionOut: &format), "Describing a decoded frame")
+        }
+        var timing = CMSampleTimingInfo(duration: duration,
+            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
+        var sample: CMSampleBuffer?
+        try checkStatus(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault,
+            imageBuffer: frame, formatDescription: format!, sampleTiming: &timing, sampleBufferOut: &sample), "Preparing a decoded frame")
+        return sample!
+    }
 }

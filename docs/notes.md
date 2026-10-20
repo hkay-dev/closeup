@@ -11,7 +11,7 @@ OBS's camera extension tells receiving apps it sends 1920x1080 BGRA at 60 fps ([
 
 ## The earlier CLI experiment
 
-Before this app, a CLI experiment received 4K60 buffers through the OBS extension, but explicit 4K and 120 fps format requests failed. The extension only advertises 1080p60, even when its producer sends 4K buffers. This app has the same limit, and its own sender hasn't been checked with a phone or a receiving app yet.
+Before this app, a CLI experiment received 4K60 buffers through the OBS extension, but explicit 4K and 120 fps format requests failed. The extension only advertises 1080p60, even when its producer sends 4K buffers. On 2026-10-19 this app's sender ran 4K60 from a Galaxy S25 Ultra into a video call; QuickTime recording is still tracked in kata:android-webcam#kq0x.
 
 ## Wireless ADB devices have no `usb:` field
 

@@ -14,3 +14,9 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-19: Project history lives in kata (bugs, requests) and this folder (what's true now).
 - 2026-10-19: USB only (Harsha's call). The app keeps hiding ADB devices that have no `usb:` field, so a phone on wireless ADB has to be plugged in; Wi-Fi may not keep up with 40 Mbps 4K60 HEVC. kata:android-webcam#0hz3
 - 2026-10-19: Keep the OBS camera extension as it is (Harsha's call). The app keeps sending NV12 at the mode's size even though OBS advertises 1920x1080 BGRA; the first phone test, kata:android-webcam#hbt7, checks whether receivers accept it. kata:android-webcam#t190
+- 2026-10-19: Download the pinned scrcpy-server 5.0.1 from its GitHub release and check its SHA-256, instead of copying it from Homebrew, which moved on to 5.0.1 and broke the build. This replaces the 2026-10-06 Homebrew line. kata:android-webcam#mm61
+- 2026-10-19: Use the selected Xcode (or `DEVELOPER_DIR` when set) for builds, so strangers can build without the Xcode beta. This replaces the 2026-10-06 Xcode beta line.
+- 2026-10-19: Find `adb` in `$ADB`, `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`, then Homebrew paths, and give every adb call a time limit. kata:android-webcam#bq44
+- 2026-10-19: Reconnect only after a session has sent a frame and only for transport errors (adb, socket). Setup errors stop capture with their message, so a mode the phone can't run doesn't loop. kata:android-webcam#gb7k
+- 2026-10-19: When OBS opens during capture, warn and keep capturing, so a call isn't cut off. kata:android-webcam#1b4s
+- 2026-10-19: Start in 1080p at 30 fps, which keeps the phone cooler than 4K60, and remember the last phone and mode. kata:android-webcam#xzjd

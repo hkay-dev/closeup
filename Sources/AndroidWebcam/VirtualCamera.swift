@@ -9,7 +9,7 @@ final class VirtualCamera {
     private let stream: CMIOStreamID
     private var queue: CMSimpleQueue?
     private var started = false
-    private let fps: Int32
+    private let sampler: FrameSampler
     private let lock = NSLock()
 
     private static func address(_ selector: Int) -> CMIOObjectPropertyAddress {
@@ -41,12 +41,17 @@ final class VirtualCamera {
     }
 
     init(fps: Int32) throws {
-        self.fps = fps
+        sampler = FrameSampler(fps: fps)
         device = try Self.findDevice()
-        let streams = try Self.objectIDs(device, selector: kCMIODevicePropertyStreams)
-        guard streams.count >= 2 else { throw WebcamError(message: "The OBS camera sink stream is missing.") }
-        // OBS adds its public source stream first and its producer sink second.
-        stream = streams[1]
+        // OBS has a source stream that apps read (direction 1) and a sink stream this app writes (direction 0).
+        guard let sink = try Self.objectIDs(device, selector: kCMIODevicePropertyStreams).first(where: { candidate in
+            var property = VirtualCamera.address(kCMIOStreamPropertyDirection)
+            var direction: UInt32 = 1
+            var used: UInt32 = 0
+            let status = CMIOObjectGetPropertyData(candidate, &property, 0, nil, UInt32(MemoryLayout<UInt32>.size), &used, &direction)
+            return status == noErr && direction == 0
+        }) else { throw WebcamError(message: "The OBS camera sink stream is missing.") }
+        stream = sink
         var copiedQueue: Unmanaged<CMSimpleQueue>?
         try checkStatus(CMIOStreamCopyBufferQueue(stream, { _, _, _ in }, nil, &copiedQueue), "Opening the camera buffer queue")
         queue = copiedQueue?.takeRetainedValue()
@@ -60,7 +65,7 @@ final class VirtualCamera {
         guard let queue, started else { return }
         // Keep latency bounded when the consumer is not draining its queue.
         guard CMSimpleQueueGetCount(queue) < CMSimpleQueueGetCapacity(queue) else { return }
-        let sample = try makeVideoSample(frame, fps: fps)
+        let sample = try sampler.sample(frame)
         let retained = Unmanaged.passRetained(sample)
         let status = CMSimpleQueueEnqueue(queue, element: UnsafeRawPointer(retained.toOpaque()))
         if status != noErr {
