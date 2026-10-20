@@ -120,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         for item in menu.items + modeMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
         statusItem.menu = menu
+        NSApp.mainMenu = makeKeyEquivalentMenu()
 
         capture.onStatus = { [weak self] message, _ in self?.captureStatus(message) }
         capture.onFrame = { [weak self] frame in self?.tap(frame) }
@@ -132,6 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.capture.macSharpness = Float(self.imageStore.macSharpness)
         }
         syncModel.begin = { [weak self] in self?.beginSyncTest() }
+        setup.start = { [weak self] in
+            guard let self else { return }
+            if !self.capture.running { self.mainActionChosen() }
+            self.shelf.close("setup")
+        }
 
         if canNotify {
             UNUserNotificationCenter.current().delegate = self
@@ -375,19 +381,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func updateSetup() {
         let obsOpen = !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty
-        let obsInstalled = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.obsBundleID) != nil
         let phone = devices.first { $0.serial == selectedSerial } ?? devices.first
         let allowed = devices.first(where: \.authorized)
+        let obsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.obsBundleID)
         let steps = [
             SetupStep(id: "adb", title: "Android platform tools", done: adbPath != nil,
                       help: adbPath.map { "adb found in \(URL(fileURLWithPath: $0).deletingLastPathComponent().path)." }
                         ?? "Install them, for example with: brew install android-platform-tools",
-                      next: "install Android platform tools."),
+                      next: "install Android platform tools.",
+                      actions: [.copy("brew install android-platform-tools"),
+                                .open("Get Platform Tools", URL(string: "https://developer.android.com/tools/releases/platform-tools")!)]),
             SetupStep(id: "extension", title: "OBS camera extension", done: extensionActive,
-                      help: extensionActive ? "Installed and approved." : obsInstalled
+                      help: extensionActive ? "Installed and approved." : obsURL != nil
                         ? "Open OBS once, click Start Virtual Camera, then allow the extension in System Settings > General > Login Items & Extensions."
                         : "Install OBS Studio 30 or later from obsproject.com, open it once and click Start Virtual Camera.",
-                      next: "turn on the OBS camera extension."),
+                      next: "turn on the OBS camera extension.",
+                      actions: obsURL.map { [.open("Open OBS", $0), .loginItems] }
+                        ?? [.open("Get OBS Studio", URL(string: "https://obsproject.com/download")!)]),
             SetupStep(id: "phone", title: "Phone connected over USB", done: phone != nil,
                       help: phone.map { "\($0.model) is plugged in." } ?? discoveryError ?? "Plug it in with a USB-C data cable.",
                       next: "plug in your phone with a USB cable."),
@@ -397,7 +407,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                       next: "allow USB debugging on the phone."),
             SetupStep(id: "obs", title: "OBS Studio closed", done: !obsOpen,
                       help: obsOpen ? "Quit OBS Studio. It can stay installed." : "OBS can stay installed.",
-                      next: "quit OBS Studio."),
+                      next: "quit OBS Studio.",
+                      actions: [.quit("Quit OBS", bundleID: Self.obsBundleID)]),
         ]
         if steps != setup.steps { setup.steps = steps }
     }
@@ -684,8 +695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         previewWindow.setFrameAutosaveName("Preview")
         window = previewWindow
         setPreviewOpen(true)
-        previewWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringForward(previewWindow)
         refreshUI()
     }
 

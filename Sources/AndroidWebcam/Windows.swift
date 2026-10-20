@@ -20,6 +20,32 @@ enum Prefs {
 
 /// The app's display name, so the brand can change in Info.plist alone.
 let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? ProcessInfo.processInfo.processName
+let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development build"
+
+/// Puts a window in front of the app the user is in. Activation alone doesn't bring an accessory app forward.
+func bringForward(_ window: NSWindow) {
+    if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+    window.makeKeyAndOrderFront(nil)
+    window.orderFrontRegardless()
+}
+
+/// The app never shows a menu bar, but its main menu still handles key equivalents in its windows.
+func makeKeyEquivalentMenu() -> NSMenu {
+    let appMenu = NSMenu()
+    appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    let fileMenu = NSMenu(title: "File")
+    fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+    let editMenu = NSMenu(title: "Edit")
+    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    let main = NSMenu()
+    for submenu in [appMenu, fileMenu, editMenu] {
+        let item = NSMenuItem()
+        item.submenu = submenu
+        main.addItem(item)
+    }
+    return main
+}
 
 /// Keeps one window per kind and brings it forward when it's asked for again.
 final class WindowShelf: NSObject, NSWindowDelegate {
@@ -41,9 +67,10 @@ final class WindowShelf: NSObject, NSWindowDelegate {
             windows[id] = window
             closeHandlers[id] = onClose
         }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        bringForward(window)
     }
+
+    func close(_ id: String) { windows[id]?.close() }
 
     func isOpen(_ id: String) -> Bool { windows[id] != nil }
 
@@ -56,12 +83,42 @@ final class WindowShelf: NSObject, NSWindowDelegate {
 
 // MARK: Setup
 
+/// A button on a pending setup step that does the step, or most of it.
+enum SetupAction: Hashable {
+    case copy(String)                   // a Terminal command
+    case open(String, URL)              // a button title and a web page or an app
+    case loginItems                     // System Settings > General > Login Items & Extensions
+    case quit(String, bundleID: String)
+
+    var title: String {
+        switch self {
+        case .copy: "Copy Command"
+        case let .open(title, _): title
+        case .loginItems: "Open Login Items & Extensions"
+        case let .quit(title, _): title
+        }
+    }
+
+    func perform() {
+        switch self {
+        case let .copy(command):
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(command, forType: .string)
+        case let .open(_, url): NSWorkspace.shared.open(url)
+        case .loginItems: SMAppService.openSystemSettingsLoginItems()
+        case let .quit(_, bundleID):
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) { app.terminate() }
+        }
+    }
+}
+
 struct SetupStep: Identifiable, Equatable {
     let id: String
     let title: String
     let done: Bool
     let help: String
     let next: String    // the header's "Next:" line while this step is pending
+    var actions: [SetupAction] = []
 }
 
 final class SetupModel: ObservableObject {
@@ -69,16 +126,35 @@ final class SetupModel: ObservableObject {
     var doneCount: Int { steps.filter(\.done).count }
     var nextStep: SetupStep? { steps.first { !$0.done } }
     var complete: Bool { !steps.isEmpty && nextStep == nil }
+    var start: () -> Void = {}
 }
 
 struct SetupView: View {
     @ObservedObject var model: SetupModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied: SetupAction?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(model.complete ? "All set. Choose Start Webcam in the menu bar." :
-                    "\(appName) needs these before it can send your phone's camera to the Mac.")
-                .fixedSize(horizontal: false, vertical: true)
+            if model.complete {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(.green)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("All set").font(.title3.weight(.semibold))
+                        Text("Start the webcam, then pick OBS Virtual Camera in your call app.")
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .transition(.opacity)
+            } else {
+                Text("\(appName) needs these before it can send your phone's camera to the Mac.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(model.steps) { step in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     mark(step)
@@ -86,6 +162,16 @@ struct SetupView: View {
                         Text(step.title).fontWeight(step.id == model.nextStep?.id ? .semibold : .regular)
                         Text(step.help).font(.callout).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        if !step.done, !step.actions.isEmpty {
+                            HStack(spacing: 8) {
+                                ForEach(step.actions, id: \.self) { action in
+                                    Button(copied == action ? "Copied" : action.title) { run(action) }
+                                }
+                            }
+                            .controlSize(.small)
+                            .padding(.top, 3)
+                        }
                         if step.id == "debugging", !step.done {
                             DisclosureGroup("Show me how") {
                                 Text("""
@@ -103,13 +189,29 @@ struct SetupView: View {
                         }
                     }
                 }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
                 .accessibilityValue(step.done ? "Done" : "Not done")
             }
-            Text("This list checks itself every few seconds.").font(.footnote).foregroundStyle(.secondary)
+            HStack {
+                Text("This list checks itself every few seconds.").font(.footnote).foregroundStyle(.secondary)
+                Spacer()
+                if model.complete {
+                    Button("Start Webcam") { model.start() }
+                        .keyboardShortcut(.defaultAction)
+                        .transition(.opacity)
+                }
+            }
         }
         .padding(20)
         .frame(width: 440)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.steps)
+    }
+
+    private func run(_ action: SetupAction) {
+        action.perform()
+        guard case .copy = action else { return }
+        copied = action
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied == action { copied = nil } }
     }
 
     @ViewBuilder private func mark(_ step: SetupStep) -> some View {
@@ -159,7 +261,8 @@ struct ImageSettingsView: View {
                     LabeledContent("Exposure") {
                         HStack {
                             Slider(value: $store.phone.exposureEV, in: -2...2, step: 1.0 / 3.0)
-                            Text(String(format: "%+.1f EV", store.phone.exposureEV)).monospacedDigit().frame(width: 56, alignment: .trailing)
+                            Text(store.phone.exposureEV.magnitude < 0.05 ? "0 EV" : String(format: "%+.1f EV", store.phone.exposureEV))
+                                .monospacedDigit().frame(width: 56, alignment: .trailing)
                         }
                     }
                     Picker("White balance", selection: $store.phone.whiteBalance) {
@@ -183,6 +286,9 @@ struct ImageSettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            // A grouped form scrolls and has no height of its own, so the window would hide every control.
+            .scrollDisabled(true)
+            .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Text("Changes apply while live. Reset returns everything to the phone's automatic settings.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -228,6 +334,10 @@ struct SettingsView: View {
                 .onChange(of: notifications) { onNotificationsChange($0) }
             Text("When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Version \(appVersion) · phone server \(ScrcpyServer.version)")
+                .font(.footnote).foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .padding(.top, 10)
         }
         .padding(20)
         .frame(width: 420)

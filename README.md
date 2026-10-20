@@ -16,7 +16,7 @@ The app is written to `build/Android Webcam.app` and signed locally with an ad-h
 
 ## Run
 
-Open the built app. Its camera icon appears in the menu bar. On first run a setup window checks for platform tools, the OBS camera extension, the phone, USB debugging and a closed OBS. Capture starts only when you choose **Start Webcam**, or when the phone is plugged in if you turn that on in Settings.
+Open the built app. Its camera icon appears in the menu bar. On first run a setup window checks for platform tools, the OBS camera extension, the phone, USB debugging and a closed OBS. Pending steps have buttons that do the step, such as copying the install command, opening OBS or Login Items & Extensions, or quitting OBS. When every step is done, the window offers **Start Webcam**. Capture starts only when you choose **Start Webcam**, or when the phone is plugged in if you turn that on in Settings. Settings shows the app and phone server versions for bug reports.
 
 - Connect a USB Android phone running Android 12 or later and authorize USB debugging.
 - Quit OBS. Its approved camera extension remains installed.
@@ -70,7 +70,7 @@ A synthetic HEVC sample decoded all 12 frames at 3840x2160 using hardware decodi
 
 USB camera capture, virtual-camera publishing, and preview resizing still need an interactive check with the phone. The headless checks did not start a camera sender or a preview.
 
-Automated menu inspection timed out, so menu actions still need a manual check.
+Menu items and windows open through System Events, so the menu, Setup, Settings and Image Settings have been checked on screen without the phone.
 
 ## Dependencies and references
 
