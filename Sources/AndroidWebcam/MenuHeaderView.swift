@@ -18,7 +18,8 @@ final class MenuHeaderView: NSView {
 
     static let width: CGFloat = 280
     private static let pictureSize = NSSize(width: 268, height: 151)
-    private static let temperature: MeasurementFormatter = {
+    /// The phone's temperature in the Mac's unit, for the header and the heat notification.
+    static let temperature: MeasurementFormatter = {
         let formatter = MeasurementFormatter()
         formatter.numberFormatter.maximumFractionDigits = 0
         return formatter

@@ -91,7 +91,12 @@ enum ADB {
     }
 
     fileprivate static func devices(onLaunch: (Process?) -> Void) throws -> [AndroidDevice] {
-        try command(["devices", "-l"], timeout: 10, onLaunch: onLaunch).split(separator: "\n").compactMap { line in
+        parseDevices(try command(["devices", "-l"], timeout: 10, onLaunch: onLaunch))
+    }
+
+    /// USB phones from `adb devices -l` or `adb track-devices -l` lines. Wireless and emulator entries are skipped.
+    static func parseDevices(_ text: String) -> [AndroidDevice] {
+        text.split(separator: "\n").compactMap { line in
             let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
             guard fields.count >= 2, fields.contains(where: { $0.hasPrefix("usb:") }) else { return nil }
             let model = fields.first(where: { $0.hasPrefix("model:") }).map { String($0.dropFirst(6)).replacingOccurrences(of: "_", with: " ") }
@@ -173,7 +178,7 @@ final class CaptureController {
         .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.harsha.android-webcam")
         .appendingPathComponent("session.json")
 
-    private let worker = DispatchQueue(label: "android-webcam.capture")
+    private let worker = DispatchQueue(label: "android-webcam.capture", qos: .userInitiated)
     private let statsQueue = DispatchQueue(label: "android-webcam.stats")
     private let lock = NSLock()
     private var stopping = false

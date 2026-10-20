@@ -34,6 +34,8 @@ The menu shows a live thumbnail, the status, and the phone's temperature and bat
 
 ADB starts this project's build of scrcpy-server 5.0.1 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets, and a second socket carries camera controls. VideoToolbox decodes the video to NV12 pixel buffers, an optional Core Image step sharpens them, and CoreMediaIO sends them directly to the OBS extension's sink stream. An optional preview displays the same frames.
 
+The app learns about phones from one long-running `adb track-devices -l` client, which reports each plug-in, unplug and USB debugging approval as it happens, so it doesn't poll adb. While the webcam runs, the app holds an activity assertion that keeps App Nap from slowing the frame path. It doesn't stop the Mac from sleeping; the call or recording app decides that.
+
 Preview dimensions never become camera-output dimensions. There is no scrcpy desktop window or OBS scene in this path.
 
 The app owns its temporary server path, forwarding entry, and child process. Stop and Quit clean up only those resources. If the app is killed before it can clean up, the next launch removes what that session recorded. It never stops the shared ADB server.

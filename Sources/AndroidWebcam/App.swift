@@ -41,8 +41,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var discoveryError: String?
     private var extensionActive = false
     private var modeIndex = AppDelegate.coolModeIndex
-    private var discoveryInProgress = false
-    private var discoveryTimer: Timer?
+    private let watcher = DeviceWatcher()
+    private var devicesKnown = false
+    private var environmentKnown = false
+    private var environmentCheckInProgress = false
+    private var environmentTimer: Timer?
+    private var captureActivity: NSObjectProtocol?
+    /// Stream drops before this time come from the Mac sleeping, not the cable.
+    private var sleepQuietUntil = Date.distantPast
     private var lenses: [String: [CameraLens]] = [:]
     /// Phones whose lenses were listed, or are being listed, since they were plugged in.
     private var lensQueries: Set<String> = []
@@ -148,6 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                               name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         workspace.addObserver(self, selector: #selector(applicationQuit(_:)),
                               name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(systemWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
         for signalNumber in [SIGTERM, SIGINT] {
             signal(signalNumber, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
@@ -156,10 +164,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             signalSources.append(source)
         }
         refreshUI()
-        refreshDevices()
-        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refreshDevices() }
+        watcher.onChange = { [weak self] in self?.devicesChanged($0) }
+        watcher.start()
+        refreshEnvironment()
+        // Platform tools and the OBS extension only need watching until they're there, or while Setup is open.
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self, self.adbPath == nil || !self.extensionActive || self.shelf.isOpen("setup") else { return }
+            self.refreshEnvironment()
+        }
+        timer.tolerance = 1
         RunLoop.main.add(timer, forMode: .common)
-        discoveryTimer = timer
+        environmentTimer = timer
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        watcher.stop()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -177,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         headerOpen = true
         headerShownAt = 0
         frameLock.unlock()
-        refreshDevices()
+        refreshEnvironment()
         updateSetup()
         refreshUI()
         // The menu runs the loop in event tracking mode, so the clock goes in the common modes.
@@ -337,46 +356,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     // MARK: Discovery and setup
 
-    private func refreshDevices() {
-        guard !capture.running, !discoveryInProgress else { return }
-        discoveryInProgress = true
+    /// Checks for platform tools and the OBS extension off main. Skipped while capturing.
+    private func refreshEnvironment() {
+        guard !capture.running, !environmentCheckInProgress else { return }
+        environmentCheckInProgress = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let adb = try? ADB.executable().path
-            let result = Result { try ADB.devices() }
             let extensionActive = (try? VirtualCamera.findDevice()) != nil
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.discoveryInProgress = false
+                self.environmentCheckInProgress = false
+                self.environmentKnown = true
                 self.adbPath = adb
                 self.extensionActive = extensionActive
-                switch result {
-                case let .success(devices):
-                    self.devices = devices
-                    self.discoveryError = nil
-                    // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
-                    let savedSerial = UserDefaults.standard.string(forKey: Prefs.serial)
-                    if devices.contains(where: { $0.serial == savedSerial }) {
-                        self.selectedSerial = savedSerial
-                    } else if !devices.contains(where: { $0.serial == self.selectedSerial }) {
-                        self.selectedSerial = devices.first(where: \.authorized)?.serial
-                    }
-                    if let blocked = self.autoStartBlocked, !devices.contains(where: { $0.serial == blocked }) {
-                        self.autoStartBlocked = nil
-                    }
-                case let .failure(error):
-                    // A failed poll isn't an unplug, so it leaves autoStartBlocked alone.
-                    self.devices = []
-                    self.discoveryError = error.localizedDescription
-                }
-                let present = Set(self.devices.map(\.serial))
-                self.lensQueries.formIntersection(present)
-                for device in self.devices where device.authorized { self.queryLenses(device.serial) }
-                self.updateSetup()
-                self.autoStartIfNeeded()
-                self.refreshUI()
-                self.showSetupOnFirstRun()
+                self.setupChanged()
             }
         }
+    }
+
+    private func devicesChanged(_ result: Result<[AndroidDevice], Error>) {
+        devicesKnown = true
+        switch result {
+        case let .success(devices):
+            self.devices = devices
+            discoveryError = nil
+            // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
+            let savedSerial = UserDefaults.standard.string(forKey: Prefs.serial)
+            if devices.contains(where: { $0.serial == savedSerial }) {
+                selectedSerial = savedSerial
+            } else if !devices.contains(where: { $0.serial == selectedSerial }) {
+                selectedSerial = devices.first(where: \.authorized)?.serial
+            }
+            if let blocked = autoStartBlocked, !devices.contains(where: { $0.serial == blocked }) {
+                autoStartBlocked = nil
+            }
+        case let .failure(error):
+            // A failed stream isn't an unplug, so it leaves autoStartBlocked alone.
+            devices = []
+            discoveryError = error.localizedDescription
+        }
+        lensQueries.formIntersection(Set(devices.map(\.serial)))
+        for device in devices where device.authorized { queryLenses(device.serial) }
+        setupChanged()
+    }
+
+    private func setupChanged() {
+        updateSetup()
+        autoStartIfNeeded()
+        refreshUI()
+        showSetupOnFirstRun()
     }
 
     private func updateSetup() {
@@ -414,7 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func showSetupOnFirstRun() {
-        guard !UserDefaults.standard.bool(forKey: Prefs.setupShown) else { return }
+        guard devicesKnown, environmentKnown, !UserDefaults.standard.bool(forKey: Prefs.setupShown) else { return }
         UserDefaults.standard.set(true, forKey: Prefs.setupShown)
         if !setup.complete { showSetup() }
     }
@@ -473,6 +501,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         note = nil
         UserDefaults.standard.set(device.serial, forKey: Prefs.serial)
         capture.macSharpness = Float(imageStore.macSharpness)
+        // Keeps App Nap from throttling the frame path while no window of ours is on screen. Idle sleep stays the
+        // receiving app's call: a call or a recording holds its own assertion.
+        captureActivity = captureActivity ?? ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            reason: "Sending the phone's camera to the virtual camera")
         capture.start(device: device, mode: CaptureMode.all[modeIndex], lensID: runLensID, image: imageStore.phone)
         refreshUI()
     }
@@ -482,6 +515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard !capture.running, let device = runDevice else { refreshUI(); return }
         let userStopped = stopRequested, quiet = restarting
         runDevice = nil
+        if let activity = captureActivity { ProcessInfo.processInfo.endActivity(activity); captureActivity = nil }
         live = false; liveSince = nil; stats = nil; torchOn = false
         // restarting stays set until the restart's stop completion runs.
         switchingLens = false; stopRequested = false; quietStart = false; cableLoose = false
@@ -513,18 +547,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             torchOn = false
             endSyncTest(reason: "The picture stopped.")
             // capture also reports false when it ends, just before its final status, so wait a moment before calling it a loose cable.
-            if !switchingLens, !stopRequested, !restarting, liveSince != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                    guard let self, self.capture.running, self.liveSince != nil, !self.live, !self.cableLoose,
-                          !self.switchingLens, !self.stopRequested, !self.restarting else { return }
-                    self.cableLoose = true
-                    self.notify("Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
-                    self.refreshUI()
-                }
-            }
+            if !switchingLens, !stopRequested, !restarting, liveSince != nil { checkLooseCable(after: 1.5) }
         }
         refreshUI()
     }
+
+    /// Calls it a loose cable if the picture is still gone after the delay. Drops around Mac sleep wait out the quiet time.
+    private func checkLooseCable(after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.capture.running, self.liveSince != nil, !self.live, !self.cableLoose,
+                  !self.switchingLens, !self.stopRequested, !self.restarting else { return }
+            let quiet = self.sleepQuietUntil.timeIntervalSinceNow
+            if quiet > 0 { self.checkLooseCable(after: min(quiet, 20)); return }
+            self.cableLoose = true
+            self.notify("Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
+            self.refreshUI()
+        }
+    }
+
+    @objc private func systemWillSleep() { sleepQuietUntil = .distantFuture }
+
+    /// The stream reconnects after a wake, so give it time before telling anyone the phone is gone.
+    @objc private func systemDidWake() { sleepQuietUntil = Date().addingTimeInterval(20) }
 
     private func phoneStats(_ newStats: PhoneStats) {
         guard capture.running else { return }
@@ -534,7 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let advice = runModeIndex == Self.coolModeIndex
                 ? "Take it out of its case or stop the webcam for a while."
                 : "Switching to 1080p · 30 keeps it cooler. Open the menu to switch."
-            notify(String(format: "Phone at %.0f °C", newStats.temperatureC), advice)
+            notify("Phone at \(MenuHeaderView.temperature.string(from: Measurement(value: newStats.temperatureC, unit: UnitTemperature.celsius)))", advice)
         }
         refreshUI()
     }
@@ -784,7 +828,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func quitApp() {
-        discoveryTimer?.invalidate()
+        environmentTimer?.invalidate()
         NSApp.terminate(nil)
     }
 }
