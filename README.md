@@ -28,7 +28,7 @@ The app sends video only. It does not record footage, capture the desktop, or tr
 
 ## Menu
 
-The menu shows a live thumbnail, the status, and the phone's temperature and battery while capturing. Below that sit the main action (Finish Setup, Start or Stop), a cool-down shortcut when the phone runs hot, then Phone, Capture Mode and Camera (lens, zoom, flashlight) submenus. **Image Settings** sets exposure, white balance, focus, noise reduction and sharpness on the phone, plus extra sharpening on the Mac. Notifications cover start, errors, heat and a loose cable.
+The menu shows a live thumbnail, the status, and the phone's temperature and battery while capturing. Below that sit the main action (Finish Setup, Start or Stop), a cool-down shortcut when the phone runs hot, then Phone, Capture Mode and Camera (lens, zoom, flashlight) submenus. **Image Settings** sets exposure, white balance, focus, noise reduction and sharpness on the phone, plus extra sharpening on the Mac. Notifications cover start, errors, heat and a loose cable. Each kind keeps one notification, so Phone reconnected replaces Phone disconnected. Clicking one opens the menu, and the heat warning has a button that switches to 1080p at 30 fps. The app asks for notification permission the first time the webcam starts.
 
 ## Data flow
 

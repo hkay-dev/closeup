@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 enum Prefs {
     static let serial = "phoneSerial"
@@ -315,6 +316,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.notifications) private var notifications = true
     @State private var loginStatus = SMAppService.mainApp.status
     @State private var loginError: String?
+    @State private var notificationsBlocked = false
     let onNotificationsChange: (Bool) -> Void
 
     var body: some View {
@@ -331,9 +333,14 @@ struct SettingsView: View {
             Text("Starts the webcam once when your saved phone connects. After you stop it, it waits until you plug the phone in again.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Notifications", isOn: $notifications)
-                .onChange(of: notifications) { onNotificationsChange($0) }
+                .onChange(of: notifications) { onNotificationsChange($0); checkNotifications() }
             Text("When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if notifications && notificationsBlocked {
+                Label("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.",
+                      systemImage: "bell.slash")
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+            }
             Text("Version \(appVersion) · phone server \(ScrcpyServer.version)")
                 .font(.footnote).foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -341,6 +348,15 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 420)
+        .onAppear(perform: checkNotifications)
+    }
+
+    private func checkNotifications() {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let blocked = settings.authorizationStatus == .denied
+            DispatchQueue.main.async { notificationsBlocked = blocked }
+        }
     }
 
     private func setLaunchAtLogin(_ on: Bool) {

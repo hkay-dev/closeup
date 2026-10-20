@@ -146,8 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         if canNotify {
-            UNUserNotificationCenter.current().delegate = self
-            if UserDefaults.standard.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
+            let center = UNUserNotificationCenter.current()
+            center.delegate = self
+            let cool = UNNotificationAction(identifier: Self.coolAction, title: "Switch to 1080p · 30", options: [])
+            center.setNotificationCategories([UNNotificationCategory(identifier: Self.heatCategory, actions: [cool],
+                                                                     intentIdentifiers: [])])
         }
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(applicationLaunched(_:)),
@@ -498,6 +501,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         live = false; liveSince = nil; stats = nil; torchOn = false
         switchingLens = false; stopRequested = false; cableLoose = false; hotNotified = false
         quietStart = quiet
+        // Asked here rather than at launch, so the prompt comes when there's something to say.
+        if UserDefaults.standard.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
         note = nil
         UserDefaults.standard.set(device.serial, forKey: Prefs.serial)
         capture.macSharpness = Float(imageStore.macSharpness)
@@ -523,9 +528,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         endSyncTest(reason: "The webcam stopped.")
         header.clearPicture()
         (window?.contentView as? PreviewView)?.clear()
-        if !userStopped && !quiet {
+        if userStopped || quiet {
+            // Whoever stopped it knows; what's left in Notification Center is out of date.
+            withdraw([.run, .cable, .heat])
+        } else {
             note = message
-            notify("Webcam stopped", message)
+            withdraw([.cable, .heat])
+            notify(.run, "Webcam stopped", message)
         }
         refreshUI()
     }
@@ -534,9 +543,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard capture.running, runDevice != nil else { return }
         if isLive {
             if cableLoose {
-                notify("Phone reconnected", "The webcam is live again.")
+                notify(.cable, "Phone reconnected", "The webcam is live again.")
             } else if liveSince == nil && !quietStart {
-                notify("Webcam is live", "Pick OBS Virtual Camera in your call app.")
+                notify(.run, "Webcam is live", "Pick OBS Virtual Camera in your call app.")
             }
             live = true
             liveSince = liveSince ?? Date()
@@ -560,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let quiet = self.sleepQuietUntil.timeIntervalSinceNow
             if quiet > 0 { self.checkLooseCable(after: min(quiet, 20)); return }
             self.cableLoose = true
-            self.notify("Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
+            self.notify(.cable, "Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
             self.refreshUI()
         }
     }
@@ -575,10 +584,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         stats = newStats
         if newStats.isHot && !hotNotified {
             hotNotified = true
-            let advice = runModeIndex == Self.coolModeIndex
-                ? "Take it out of its case or stop the webcam for a while."
-                : "Switching to 1080p · 30 keeps it cooler. Open the menu to switch."
-            notify("Phone at \(MenuHeaderView.temperature.string(from: Measurement(value: newStats.temperatureC, unit: UnitTemperature.celsius)))", advice)
+            let cool = runModeIndex == Self.coolModeIndex
+            notify(.heat, "Phone at \(MenuHeaderView.temperature.string(from: Measurement(value: newStats.temperatureC, unit: UnitTemperature.celsius)))",
+                   cool ? "Take it out of its case or stop the webcam for a while." : "Switching to 1080p · 30 keeps it cooler.",
+                   category: cool ? nil : Self.heatCategory)
         }
         refreshUI()
     }
@@ -811,20 +820,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    private func notify(_ title: String, _ body: String) {
+    /// What a notification is about. Each topic keeps one notification, so a newer one replaces the last.
+    private enum Notice: String {
+        case run        // live, stopped
+        case cable      // disconnected, reconnected
+        case heat
+    }
+    private static let heatCategory = "heat"
+    private static let coolAction = "switch-to-cool"
+
+    private func notify(_ notice: Notice, _ title: String, _ body: String, category: String? = nil) {
         guard canNotify, UserDefaults.standard.bool(forKey: Prefs.notifications) else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        content.threadIdentifier = "webcam"
+        if let category { content.categoryIdentifier = category }
+        let request = UNNotificationRequest(identifier: notice.rawValue, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in
             if let error { fputs("Notification failed. \(error.localizedDescription)\n", stderr) }
         }
     }
 
+    private func withdraw(_ notices: [Notice]) {
+        guard canNotify else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: notices.map(\.rawValue))
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .list])
+    }
+
+    /// A click opens the menu, where the status and every control are; the heat warning's button switches modes.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let action = response.actionIdentifier
+        DispatchQueue.main.async { [weak self] in
+            switch action {
+            case Self.coolAction: self?.switchToCoolMode()
+            case UNNotificationDefaultActionIdentifier: self?.statusItem.button?.performClick(nil)
+            default: break
+            }
+            completionHandler()
+        }
     }
 
     @objc private func quitApp() {
