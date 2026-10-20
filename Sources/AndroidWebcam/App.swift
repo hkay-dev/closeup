@@ -86,8 +86,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var torchOn = false
     private var switchingLens = false
     private var stopRequested = false
-    /// A mode switch restarts capture without telling the user it stopped and started.
-    private var quietRestart = false
+    /// A mode switch ends the old run without telling the user it stopped,
+    private var restarting = false
+    /// and starts the new one without a "live" notice.
+    private var quietStart = false
+    private var hotNotified = false
     private var cableLoose = false
     /// One plain line for the header: the last error or a warning.
     private var note: String?
@@ -181,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard capture.running else { return .terminateNow }
-        stopRequested = true
+        stopRequested = true; restarting = false
         refreshUI()
         capture.stop { NSApp.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
@@ -227,7 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             mainAction.title = "Start Webcam"
             mainAction.isEnabled = devices.contains { $0.serial == selectedSerial && $0.authorized }
         }
-        coolDown.isHidden = !(running && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
+        coolDown.isHidden = !(running && !stopRequested && !restarting && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
 
         phoneItem.isEnabled = !devices.isEmpty
         rebuildPhoneMenu()
@@ -363,12 +366,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     } else if !devices.contains(where: { $0.serial == self.selectedSerial }) {
                         self.selectedSerial = devices.first(where: \.authorized)?.serial
                     }
+                    if let blocked = self.autoStartBlocked, !devices.contains(where: { $0.serial == blocked }) {
+                        self.autoStartBlocked = nil
+                    }
                 case let .failure(error):
+                    // A failed poll isn't an unplug, so it leaves autoStartBlocked alone.
                     self.devices = []
                     self.discoveryError = error.localizedDescription
                 }
                 let present = Set(self.devices.map(\.serial))
-                if let blocked = self.autoStartBlocked, !present.contains(blocked) { self.autoStartBlocked = nil }
                 self.lensQueries.formIntersection(present)
                 for device in self.devices where device.authorized { self.queryLenses(device.serial) }
                 self.updateSetup()
@@ -445,7 +451,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     self.lenses[serial] = list
                     if let data = try? JSONEncoder().encode(list) { UserDefaults.standard.set(data, forKey: Prefs.lenses(serial)) }
                 case .success: break
-                case let .failure(error): fputs("Could not list the phone's cameras. \(error.localizedDescription)\n", stderr)
+                case let .failure(error):
+                    self.lensQueries.remove(serial)
+                    fputs("Could not list the phone's cameras. \(error.localizedDescription)\n", stderr)
                 }
                 self.refreshUI()
             }
@@ -461,8 +469,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         runDevice = device
         runModeIndex = modeIndex
         live = false; liveSince = nil; stats = nil; torchOn = false
-        switchingLens = false; stopRequested = false; cableLoose = false
-        quietRestart = quiet
+        switchingLens = false; stopRequested = false; cableLoose = false; hotNotified = false
+        quietStart = quiet
         note = nil
         UserDefaults.standard.set(device.serial, forKey: Prefs.serial)
         capture.macSharpness = Float(imageStore.macSharpness)
@@ -473,10 +481,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// onStatus: the header tells the running states itself, so only the final status matters here.
     private func captureStatus(_ message: String) {
         guard !capture.running, let device = runDevice else { refreshUI(); return }
-        let userStopped = stopRequested, quiet = quietRestart
+        let userStopped = stopRequested, quiet = restarting
         runDevice = nil
         live = false; liveSince = nil; stats = nil; torchOn = false
-        switchingLens = false; stopRequested = false; quietRestart = false; cableLoose = false
+        // restarting stays set until the restart's stop completion runs.
+        switchingLens = false; stopRequested = false; quietStart = false; cableLoose = false
         autoStartBlocked = device.serial
         endSyncTest(reason: "The webcam stopped.")
         header.clearPicture()
@@ -492,21 +501,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if isLive {
             if cableLoose {
                 notify("Phone reconnected", "The webcam is live again.")
-            } else if liveSince == nil && !quietRestart {
+            } else if liveSince == nil && !quietStart {
                 notify("Webcam is live", "Pick OBS Virtual Camera in your call app.")
             }
             live = true
             liveSince = liveSince ?? Date()
-            cableLoose = false; switchingLens = false; quietRestart = false
+            if switchingLens, let lens = runLensID { UserDefaults.standard.set(lens, forKey: Prefs.lensID) }
+            cableLoose = false; switchingLens = false; quietStart = false
         } else {
             live = false
             torchOn = false
             endSyncTest(reason: "The picture stopped.")
             // capture also reports false when it ends, just before its final status, so wait a moment before calling it a loose cable.
-            if !switchingLens, !stopRequested, !quietRestart, liveSince != nil {
+            if !switchingLens, !stopRequested, !restarting, liveSince != nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                     guard let self, self.capture.running, self.liveSince != nil, !self.live, !self.cableLoose,
-                          !self.switchingLens, !self.stopRequested, !self.quietRestart else { return }
+                          !self.switchingLens, !self.stopRequested, !self.restarting else { return }
                     self.cableLoose = true
                     self.notify("Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
                     self.refreshUI()
@@ -518,9 +528,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func phoneStats(_ newStats: PhoneStats) {
         guard capture.running else { return }
-        let wasHot = stats?.isHot ?? false
         stats = newStats
-        if newStats.isHot && !wasHot {
+        if newStats.isHot && !hotNotified {
+            hotNotified = true
             let advice = runModeIndex == Self.coolModeIndex
                 ? "Take it out of its case or stop the webcam for a while."
                 : "Switching to 1080p · 30 keeps it cooler. Open the menu to switch."
@@ -531,7 +541,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func mainActionChosen() {
         if capture.running {
-            stopRequested = true
+            stopRequested = true; restarting = false
             capture.stop()
             refreshUI()
             return
@@ -550,9 +560,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func switchToCoolMode() {
         modeIndex = Self.coolModeIndex
         UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
-        guard capture.running, let device = runDevice else { refreshUI(); return }
-        quietRestart = true
-        capture.stop { [weak self] in self?.startCapture(device, quiet: true) }
+        guard capture.running, !stopRequested, !restarting, let device = runDevice else { refreshUI(); return }
+        restarting = true
+        capture.stop { [weak self] in
+            // Stop or Quit during the switch clears restarting and cancels the restart.
+            guard let self, self.restarting else { return }
+            self.restarting = false
+            self.startCapture(device, quiet: true)
+        }
         refreshUI()
     }
 
@@ -572,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard let device = runDevice else { return }
         let list = lensList(device.serial)
         let lens = list[sender.tag]
-        UserDefaults.standard.set(lens.id, forKey: Prefs.lensID)
+        // Saved once the new lens is live, so a lens that can't run this mode isn't remembered.
         guard lens.id != (runLensID ?? "0") else { return }
         runLensID = lens.id
         switchingLens = true

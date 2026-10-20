@@ -234,7 +234,7 @@ index fb52969..b7be6cd 100644
 +    private CaptureRequest templateRequest; // the template's defaults, for values the camera does not support
 +    private boolean focusLockPending;
 +    private boolean focusLocked;
-+    private int focusWaitFrames;
++    private long focusLockDeadline;
  
      public CameraCapture(Options options) {
          this.explicitCameraId = options.getCameraId();
@@ -352,7 +352,7 @@ index fb52969..b7be6cd 100644
 +            } else if (!focusLocked && !focusLockPending) {
 +                // Locked once the continuous search has settled, in onCaptureCompleted()
 +                focusLockPending = true;
-+                focusWaitFrames = 0;
++                focusLockDeadline = android.os.SystemClock.uptimeMillis() + 3000;
 +            }
 +        }
 +    }
@@ -381,8 +381,8 @@ index fb52969..b7be6cd 100644
 +        Integer state = result.get(CaptureResult.CONTROL_AF_STATE);
 +        boolean settled = state != null
 +                && (state == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED || state == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED);
-+        // Lock anyway after about 3 seconds at 30 fps
-+        if (!settled && ++focusWaitFrames < 90) {
++        // Lock anyway after 3 seconds, whatever the frame rate
++        if (!settled && android.os.SystemClock.uptimeMillis() < focusLockDeadline) {
 +            return;
 +        }
 +        focusLockPending = false;

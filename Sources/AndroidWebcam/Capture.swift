@@ -276,6 +276,8 @@ final class CaptureController {
         lensID = id
         guard running, !stopping else { lock.unlock(); return }
         lensGeneration += 1
+        // The new lens has to stream before a failure counts as a loose cable.
+        streamed = false
         if socket >= 0 { Darwin.shutdown(socket, SHUT_RDWR) }
         let process = adbProcess
         lock.unlock()
