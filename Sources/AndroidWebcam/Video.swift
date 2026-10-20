@@ -5,13 +5,35 @@ import CoreMedia
 import CoreVideo
 import VideoToolbox
 
+/// `message` is what the user reads; `detail` keeps the exact failure for the log.
 struct WebcamError: LocalizedError {
     let message: String
+    var detail: String? = nil
     var errorDescription: String? { message }
 }
 
-func checkStatus(_ status: OSStatus, _ operation: String) throws {
-    if status != noErr { throw WebcamError(message: "\(operation) failed (\(status)).") }
+/// What the user reads when a step they can't see fails.
+enum Plain {
+    static let decode = "The Mac couldn't decode the phone's video. Start again, and pick a lower capture mode if it keeps happening."
+    static let garbled = "The phone's video arrived damaged. Start again, and check the cable if it keeps happening."
+    static let obs = "OBS's camera extension isn't taking video. Open OBS, click Start Virtual Camera and then Stop, quit OBS and start again."
+    static let frame = "A frame couldn't be prepared for the camera. Start again."
+    static let sharpen = "Mac sharpening failed."
+}
+
+func checkStatus(_ status: OSStatus, _ operation: String, _ plain: String) throws {
+    if status != noErr { throw WebcamError(message: plain, detail: "\(operation) failed (\(status)).") }
+}
+
+extension Error {
+    /// The exact failure for the log, with the plain message in front when there is a detail behind it.
+    var logText: String {
+        switch self {
+        case let error as WebcamError: return error.detail.map { "\(error.message) [\($0)]" } ?? error.message
+        case let error as TransportError: return error.detail.map { "\(error.message) [\($0)]" } ?? error.message
+        default: return localizedDescription
+        }
+    }
 }
 
 struct CaptureMode: Equatable {
@@ -33,20 +55,20 @@ enum ScrcpyHeader {
     case packet(size: Int, pts: Int64, configuration: Bool)
 
     init(_ data: Data) throws {
-        guard data.count == 12 else { throw WebcamError(message: "Incomplete scrcpy packet header.") }
+        guard data.count == 12 else { throw WebcamError(message: Plain.garbled, detail: "Incomplete scrcpy packet header.") }
         let bytes = [UInt8](data)
         let flags = bytes[0..<8].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
         if flags & (1 << 63) != 0 {
             let width = bytes[4..<8].reduce(0) { ($0 << 8) | Int($1) }
             let height = bytes[8..<12].reduce(0) { ($0 << 8) | Int($1) }
             guard width > 0, height > 0, width <= 8192, height <= 8192 else {
-                throw WebcamError(message: "Invalid capture dimensions in scrcpy session.")
+                throw WebcamError(message: Plain.garbled, detail: "Invalid capture dimensions \(width)x\(height) in scrcpy session.")
             }
             self = .session(width: width, height: height)
         } else {
             let size = bytes[8..<12].reduce(0) { ($0 << 8) | Int($1) }
             guard size > 0, size <= 32 * 1024 * 1024 else {
-                throw WebcamError(message: "Invalid scrcpy packet size.")
+                throw WebcamError(message: Plain.garbled, detail: "Invalid scrcpy packet size \(size).")
             }
             self = .packet(size: size, pts: Int64(flags & ((1 << 61) - 1)), configuration: flags & (1 << 62) != 0)
         }
@@ -104,24 +126,26 @@ final class HEVCDecoder {
 
     func decode(_ payload: Data, pts: Int64) throws {
         let units = AnnexB.units(payload)
-        guard !units.isEmpty else { throw WebcamError(message: "Expected Annex B HEVC data from the phone.") }
+        guard !units.isEmpty else { throw WebcamError(message: Plain.garbled, detail: "Expected Annex B HEVC data from the phone.") }
         for unit in units where (32...34).contains(AnnexB.nalType(unit)) {
             parameterSets[AnnexB.nalType(unit)] = unit
         }
         if parameterSets.count == 3, parameterSets != formatParameterSets { try updateFormat() }
         let pictures = units.filter { AnnexB.nalType($0) < 32 }
         guard !pictures.isEmpty else { return }
-        guard let session, let format else { throw WebcamError(message: "HEVC picture arrived before its configuration.") }
+        guard let session, let format else {
+            throw WebcamError(message: Plain.garbled, detail: "HEVC picture arrived before its configuration.")
+        }
         let bytes = AnnexB.lengthPrefixed(pictures)
         var block: CMBlockBuffer?
         try checkStatus(CMBlockBufferCreateWithMemoryBlock(
             allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
             blockAllocator: kCFAllocatorDefault, customBlockSource: nil,
             offsetToData: 0, dataLength: bytes.count, flags: 0, blockBufferOut: &block
-        ), "Creating a video packet buffer")
+        ), "Creating a video packet buffer", Plain.decode)
         try bytes.withUnsafeBytes {
             try checkStatus(CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block!,
-                                                       offsetIntoDestination: 0, dataLength: bytes.count), "Copying a video packet")
+                                                       offsetIntoDestination: 0, dataLength: bytes.count), "Copying a video packet", Plain.decode)
         }
         var timing = CMSampleTimingInfo(duration: .invalid,
             presentationTimeStamp: CMTime(value: pts, timescale: 1_000_000), decodeTimeStamp: .invalid)
@@ -131,9 +155,9 @@ final class HEVCDecoder {
             allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format, sampleCount: 1,
             sampleTimingEntryCount: 1, sampleTimingArray: &timing,
             sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample
-        ), "Creating a HEVC sample")
+        ), "Creating a HEVC sample", Plain.decode)
         try checkStatus(VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample!,
-            flags: [._EnableAsynchronousDecompression], frameRefcon: nil, infoFlagsOut: nil), "Decoding HEVC")
+            flags: [._EnableAsynchronousDecompression], frameRefcon: nil, infoFlagsOut: nil), "Decoding HEVC", Plain.decode)
     }
 
     /// Builds the format from the latest VPS, SPS and PPS, and replaces the session
@@ -147,7 +171,7 @@ final class HEVCDecoder {
             try checkStatus(CMVideoFormatDescriptionCreateFromHEVCParameterSets(
                 allocator: kCFAllocatorDefault, parameterSetCount: 3, parameterSetPointers: &pointers,
                 parameterSetSizes: &lengths, nalUnitHeaderLength: 4, extensions: nil,
-                formatDescriptionOut: &newFormat), "Reading the HEVC configuration")
+                formatDescriptionOut: &newFormat), "Reading the HEVC configuration", Plain.garbled)
         } } }
         if session == nil || !VTDecompressionSessionCanAcceptFormatDescription(session!, formatDescription: newFormat!) {
             endSession()
@@ -167,20 +191,20 @@ final class HEVCDecoder {
         var callback = VTDecompressionOutputCallbackRecord(decompressionOutputCallback: { ref, _, status, _, image, _, _ in
             guard let ref else { return }
             let decoder = Unmanaged<HEVCDecoder>.fromOpaque(ref).takeUnretainedValue()
-            if status != noErr { decoder.onError(WebcamError(message: "VideoToolbox returned error \(status).")) }
+            if status != noErr { decoder.onError(WebcamError(message: Plain.decode, detail: "VideoToolbox returned error \(status).")) }
             else if let image { decoder.logFirstFrame(image); decoder.onFrame(image) }
         }, decompressionOutputRefCon: Unmanaged.passUnretained(self).toOpaque())
         var created: VTDecompressionSession?
         try checkStatus(VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: format,
             decoderSpecification: specification, imageBufferAttributes: attributes,
-            outputCallback: &callback, decompressionSessionOut: &created), "Starting the hardware decoder")
+            outputCallback: &callback, decompressionSessionOut: &created), "Starting the hardware decoder", Plain.decode)
         var value: Unmanaged<CFTypeRef>?
         let status = VTSessionCopyProperty(created!, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
             allocator: kCFAllocatorDefault, valueOut: &value)
         hardwareAccelerated = status == noErr && (value?.takeRetainedValue() as? Bool) == true
         guard hardwareAccelerated else {
             VTDecompressionSessionInvalidate(created!)
-            throw WebcamError(message: "Hardware HEVC decoding is unavailable.")
+            throw WebcamError(message: "This Mac can't decode HEVC video in hardware, which the webcam needs.")
         }
         return created!
     }
@@ -230,13 +254,13 @@ final class FrameSampler {
         if format == nil || !CMVideoFormatDescriptionMatchesImageBuffer(format!, imageBuffer: frame) {
             format = nil
             try checkStatus(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                imageBuffer: frame, formatDescriptionOut: &format), "Describing a decoded frame")
+                imageBuffer: frame, formatDescriptionOut: &format), "Describing a decoded frame", Plain.frame)
         }
         var timing = CMSampleTimingInfo(duration: duration,
             presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
         var sample: CMSampleBuffer?
         try checkStatus(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault,
-            imageBuffer: frame, formatDescription: format!, sampleTiming: &timing, sampleBufferOut: &sample), "Preparing a decoded frame")
+            imageBuffer: frame, formatDescription: format!, sampleTiming: &timing, sampleBufferOut: &sample), "Preparing a decoded frame", Plain.frame)
         return sample!
     }
 }
@@ -277,7 +301,7 @@ final class FrameSharpener {
             filter.inputImage = CIImage(cvPixelBuffer: frame, options: [.colorSpace: NSNull()])
             filter.sharpness = amount
             defer { filter.inputImage = nil }
-            guard let image = filter.outputImage else { throw WebcamError(message: "The sharpen filter gave no image.") }
+            guard let image = filter.outputImage else { throw WebcamError(message: Plain.sharpen, detail: "The sharpen filter gave no image.") }
             let destination = CIRenderDestination(pixelBuffer: output)
             destination.colorSpace = nil
             _ = try context.startTask(toRender: image, to: destination).waitUntilCompleted()
@@ -285,7 +309,7 @@ final class FrameSharpener {
         } catch {
             if !failureLogged {
                 failureLogged = true
-                fputs("Mac sharpening failed, sending frames unsharpened: \(error.localizedDescription)\n", stderr)
+                fputs("Mac sharpening failed, sending frames unsharpened: \(error.logText)\n", stderr)
             }
             return frame
         }
@@ -296,7 +320,7 @@ final class FrameSharpener {
         let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
         let format = CVPixelBufferGetPixelFormatType(frame)
         guard format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        else { throw WebcamError(message: "Sharpening needs NV12 frames.") }
+        else { throw WebcamError(message: Plain.sharpen, detail: "Sharpening needs NV12 frames.") }
         if pool == nil || width != poolWidth || height != poolHeight || format != poolFormat {
             pool = nil
             let attributes = [
@@ -307,11 +331,11 @@ final class FrameSharpener {
                 kCVPixelBufferMetalCompatibilityKey: true
             ] as CFDictionary
             let poolAttributes = [kCVPixelBufferPoolMinimumBufferCountKey: 4] as CFDictionary
-            try checkStatus(CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes, attributes, &pool), "Creating sharpening buffers")
+            try checkStatus(CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes, attributes, &pool), "Creating sharpening buffers", Plain.sharpen)
             poolWidth = width; poolHeight = height; poolFormat = format
         }
         var output: CVPixelBuffer?
-        try checkStatus(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool!, &output), "Getting a sharpening buffer")
+        try checkStatus(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool!, &output), "Getting a sharpening buffer", Plain.sharpen)
         return output!
     }
 }

@@ -83,7 +83,8 @@ final class DeviceWatcher {
         readAvailable(errorReader, into: &errorText, buffer: &buffer)
         if process.terminationStatus != 0, !isStopped {
             let detail = String(decoding: errorText, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw TransportError(message: "ADB couldn't list phones. \(detail)")
+            throw TransportError(message: "adb isn't working, so the app can't see the phone. It keeps trying.",
+                                 detail: "adb track-devices exited \(process.terminationStatus): \(detail)")
         }
     }
 

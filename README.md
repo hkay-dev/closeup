@@ -42,6 +42,8 @@ The app owns its temporary server path, forwarding entry, and child process. Sto
 
 If the stream drops after it has started, for example when the cable comes loose, the app keeps the virtual camera open and reconnects once the phone is back. A session that fails before its first frame stops with the error instead.
 
+When the webcam stops on an error, the menu and the notification say what went wrong in plain words and what to try, for example that another app on the phone is using the camera. The exact adb, decoder and phone server messages go to the app's standard error for the log.
+
 ## Modes
 
 - 4K at 60 fps, HEVC at 40 Mbps.

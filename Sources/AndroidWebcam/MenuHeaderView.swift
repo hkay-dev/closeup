@@ -180,7 +180,7 @@ final class MenuHeaderView: NSView {
         do { try picture.show(frame) }
         catch where !loggedPictureError {
             loggedPictureError = true
-            fputs("Menu thumbnail failed. \(error.localizedDescription)\n", stderr)
+            fputs("Menu thumbnail failed. \(error.logText)\n", stderr)
         } catch {}
     }
 

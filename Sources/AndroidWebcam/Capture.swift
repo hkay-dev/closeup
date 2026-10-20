@@ -13,6 +13,7 @@ struct AndroidDevice: Equatable {
 /// Capture reconnects after these. Every other error ends capture.
 struct TransportError: LocalizedError {
     let message: String
+    var detail: String? = nil
     var errorDescription: String? { message }
 }
 
@@ -78,12 +79,32 @@ enum ADB {
     /// Like command(_:timeout:), and hands the running process to onLaunch so the caller can interrupt it.
     fileprivate static func command(_ arguments: [String], timeout: TimeInterval, onLaunch: (Process?) -> Void) throws -> String {
         guard let result = try runTool(executable(), arguments, timeout: timeout, onLaunch: onLaunch) else {
-            throw TransportError(message: "ADB didn't answer within \(Int(timeout)) seconds.")
+            throw TransportError(message: "The phone stopped answering. Unplug it, plug it back in and start again.",
+                                 detail: "adb \(arguments.joined(separator: " ")) gave no answer in \(Int(timeout)) seconds.")
         }
         guard result.status == 0 else {
-            throw TransportError(message: "ADB failed. \(result.text.trimmingCharacters(in: .whitespacesAndNewlines))")
+            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw TransportError(message: explain(text), detail: "adb \(arguments.joined(separator: " ")) failed: \(text)")
         }
         return result.text
+    }
+
+    /// adb's own words, said for someone who doesn't know adb.
+    static func explain(_ text: String) -> String {
+        let text = text.lowercased()
+        if text.contains("unauthorized") {
+            return "The phone hasn't allowed USB debugging for this Mac. Unlock it and tap Allow."
+        }
+        if ["not found", "no devices", "offline", "no such device", "device still connecting", "closed"].contains(where: text.contains) {
+            return "The phone disconnected. Check the cable and start again."
+        }
+        if text.contains("daemon") || text.contains("cannot connect") {
+            return "adb's background service isn't responding. Wait a moment and start again."
+        }
+        if text.contains("no space left") || text.contains("read-only file system") {
+            return "The phone has no room for the webcam's helper. Free some storage on the phone and start again."
+        }
+        return "The phone didn't answer the way the app expected. Unplug it, plug it back in and start again."
     }
 
     static func devices() throws -> [AndroidDevice] {
@@ -185,6 +206,8 @@ final class CaptureController {
     private var socket: Int32 = -1
     private var adbProcess: Process?
     private var decoderError: Error?
+    /// The phone server's ERROR lines from the current session, which say why the camera didn't open.
+    private var serverErrors = ""
     /// Set once a session has sent a frame. Before that, a failure is a setup problem, not a loose cable.
     private var streamed = false
     /// True while the current session's frames flow.
@@ -242,7 +265,7 @@ final class CaptureController {
     func start(device: AndroidDevice, mode: CaptureMode, lensID: String?, image: PhoneImageSettings) {
         guard !running else { return }
         lock.lock()
-        stopping = false; decoderError = nil; streamed = false
+        stopping = false; decoderError = nil; streamed = false; serverErrors = ""
         self.lensID = lensID
         self.image = image
         statsGeneration += 1
@@ -330,12 +353,12 @@ final class CaptureController {
     /// Lists the phone's cameras by running the server with list_cameras=true. Blocking; call off main.
     func cameras(serial: String) throws -> [CameraLens] {
         guard let serverURL = ADB.serverURL else {
-            throw WebcamError(message: "The bundled scrcpy-server \(ScrcpyServer.version) is missing.")
+            throw WebcamError(message: Self.serverMissing)
         }
         let remote = Self.remotePrefix + String(format: "list-%08x.jar", UInt32.random(in: 1...0x7fff_ffff))
         defer {
             do { _ = try ADB.command(["-s", serial, "shell", "rm", "-f", remote], timeout: 5) }
-            catch { fputs("Phone cleanup failed. \(error.localizedDescription)\n", stderr) }
+            catch { fputs("Phone cleanup failed. \(error.logText)\n", stderr) }
         }
         _ = try ADB.command(["-s", serial, "push", serverURL.path, remote], timeout: 30)
         let output = try ADB.command(["-s", serial, "shell", "CLASSPATH=\(remote)", "app_process", "/",
@@ -458,10 +481,10 @@ final class CaptureController {
     private func run(device: AndroidDevice, mode: CaptureMode) -> String {
         do {
             if shouldStop { return "Webcam stopped" }
-            guard device.authorized else { throw WebcamError(message: "Approve USB debugging on your phone.") }
-            guard let serverURL = ADB.serverURL else {
-                throw WebcamError(message: "The bundled scrcpy-server \(ScrcpyServer.version) is missing.")
+            guard device.authorized else {
+                throw WebcamError(message: "The phone hasn't allowed USB debugging for this Mac. Unlock it and tap Allow.")
             }
+            guard let serverURL = ADB.serverURL else { throw WebcamError(message: Self.serverMissing) }
             let camera = try VirtualCamera(fps: mode.fps)
             defer { camera.stop() }
             while true {
@@ -473,7 +496,7 @@ final class CaptureController {
                 } catch where !shouldStop && ending(generation) {
                     // switchLens ended this session; whatever it threw on the way out isn't a failure.
                 } catch let error as TransportError where !shouldStop && hasStreamed {
-                    fputs("Phone session ended. \(error.message)\n", stderr)
+                    fputs("Phone session ended. \(error.logText)\n", stderr)
                     report("Reconnecting to \(device.model). \(error.message)", active: true)
                     guard waitForDevice(device.serial) else { break }
                     continue
@@ -482,10 +505,38 @@ final class CaptureController {
             }
             return "Webcam stopped"
         } catch {
-            lock.lock(); let failure = decoderError; lock.unlock()
-            if let failure { return failure.localizedDescription }
-            return shouldStop ? "Webcam stopped" : error.localizedDescription
+            lock.lock(); let failure = decoderError; let server = serverErrors; lock.unlock()
+            if failure == nil && shouldStop { return "Webcam stopped" }
+            let shown = failure ?? error
+            fputs("Webcam stopped. \(shown.logText)\(server.isEmpty ? "" : " Phone said: \(server)")\n", stderr)
+            if failure == nil, let reason = Self.explainServer(server) { return reason }
+            return shown.localizedDescription
         }
+    }
+
+    private static let serverMissing = "This copy of the app is missing its phone helper (scrcpy-server \(ScrcpyServer.version)). Download the app again."
+
+    /// The phone server's error lines, said plainly. Nil when they don't name a cause the user can act on.
+    static func explainServer(_ text: String) -> String? {
+        if text.contains("CAMERA_IN_USE") || text.contains("in use already") || text.contains("MAX_CAMERAS_IN_USE") {
+            return "Another app on the phone is using the camera. Close it and start again."
+        }
+        if text.contains("CAMERA_DISABLED") {
+            return "Camera access is turned off on the phone. Turn it on in the phone's quick settings or privacy settings, then start again."
+        }
+        if text.contains("Could not select camera size") {
+            return "The phone's camera can't capture in this mode. Pick a lower capture mode and start again."
+        }
+        if text.contains("CameraAccessException") || text.contains("Camera error") || text.contains("Camera configuration error") {
+            return "The phone's camera reported an error. Unlock the phone and start again, and restart the phone if it keeps happening."
+        }
+        return nil
+    }
+
+    private func noteServerError(_ line: String) {
+        lock.lock()
+        serverErrors = String((serverErrors + line + "\n").suffix(4000))
+        lock.unlock()
     }
 
     private var hasStreamed: Bool {
@@ -507,10 +558,10 @@ final class CaptureController {
     }
 
     private func session(device: AndroidDevice, mode: CaptureMode, serverURL: URL, camera: VirtualCamera, generation: Int) throws {
-        lock.lock(); let lens = lensID ?? "0"; let settings = image; lock.unlock()
+        lock.lock(); let lens = lensID ?? "0"; let settings = image; serverErrors = ""; lock.unlock()
         let sdk = Int(try adb(["-s", device.serial, "shell", "getprop", "ro.build.version.sdk"])
             .trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-        guard sdk >= 31 else { throw WebcamError(message: "Android camera capture needs Android 12 or later.") }
+        guard sdk >= 31 else { throw WebcamError(message: "The webcam needs Android 12 or later, and this phone runs an older version.") }
         let scid = String(format: "%08x", UInt32.random(in: 1...0x7fff_ffff))
         let remote = Self.remotePrefix + "\(scid).jar"
         var port: Int?
@@ -534,16 +585,17 @@ final class CaptureController {
             if let server { end(server, exited: serverExited) }
             if let port {
                 do { _ = try ADB.command(["-s", device.serial, "forward", "--remove", "tcp:\(port)"], timeout: 5) }
-                catch { fputs("Forward cleanup failed. \(error.localizedDescription)\n", stderr) }
+                catch { fputs("Forward cleanup failed. \(error.logText)\n", stderr) }
             }
             do { _ = try ADB.command(["-s", device.serial, "shell", "rm", "-f", remote], timeout: 5) }
-            catch { fputs("Phone cleanup failed. \(error.localizedDescription)\n", stderr) }
+            catch { fputs("Phone cleanup failed. \(error.logText)\n", stderr) }
             try? FileManager.default.removeItem(at: Self.sessionFile)
         }
         _ = try adb(["-s", device.serial, "push", serverURL.path, remote], timeout: 30)
         let forwarding = try adb(["-s", device.serial, "forward", "tcp:0", "localabstract:scrcpy_\(scid)"])
         guard let allocated = Int(forwarding.trimmingCharacters(in: .whitespacesAndNewlines)), (1...65535).contains(allocated) else {
-            throw TransportError(message: "ADB did not return a forwarding port.")
+            throw TransportError(message: "adb couldn't connect to the phone's camera. Unplug the phone, plug it back in and start again.",
+                                 detail: "adb forward returned \(forwarding).")
         }
         port = allocated
         if ending(generation) { return }
@@ -556,8 +608,21 @@ final class CaptureController {
             "video_codec=h265", "video_bit_rate=\(mode.bitrate)", "audio=false", "control=true",
             "clipboard_autosync=false", "send_device_meta=false", "send_dummy_byte=true",
             "downsize_on_error=false", "cleanup=true"] + Self.imageArguments(settings)
-        shell.standardOutput = FileHandle.standardError
-        shell.standardError = FileHandle.standardError
+        // The server's output goes to the log, and its ERROR lines say why a camera didn't open.
+        let output = Pipe()
+        shell.standardOutput = output
+        shell.standardError = output
+        let serverLog = output.fileHandleForReading
+        Thread { [weak self] in
+            var pending = ""
+            while case let chunk = serverLog.availableData, !chunk.isEmpty {
+                FileHandle.standardError.write(chunk)
+                pending += String(decoding: chunk, as: UTF8.self)
+                var lines = pending.components(separatedBy: "\n")
+                pending = lines.removeLast()
+                for line in lines where line.contains("ERROR") { self?.noteServerError(line) }
+            }
+        }.start()
         shell.terminationHandler = { _ in serverExited.signal() }
         try shell.run()
         server = shell
@@ -565,7 +630,7 @@ final class CaptureController {
                            pid: shell.processIdentifier, owner: getpid()))
         // The server accepts the video socket first (only it gets the dummy byte), then the control socket,
         // and sends the codec once both are connected.
-        fd = try connect(port: allocated, generation: generation)
+        fd = try connect(port: allocated, generation: generation, server: shell)
         lock.lock(); socket = fd; lock.unlock()
         if ending(generation) { return }
         controlFD = try connectControl(port: allocated)
@@ -574,13 +639,17 @@ final class CaptureController {
         Thread { Self.drainControl(drainFD); controlDrained.signal() }.start()
         controlLock.lock(); control = controlFD; controlLock.unlock()
         let codec = try readExactly(4, from: fd)
-        guard codec == Data("h265".utf8) else { throw WebcamError(message: "The phone could not start HEVC capture. Try a lower capture mode.") }
+        guard codec == Data("h265".utf8) else {
+            throw WebcamError(message: "The phone couldn't start its camera in this mode. Pick a lower capture mode and start again.",
+                              detail: "The server sent codec \(String(decoding: codec, as: UTF8.self)).")
+        }
         var announced = false
         let videoDecoder = HEVCDecoder(onFrame: { [weak self] pixel in
             guard let self, !self.ending(generation) else { return }
             do {
                 guard CVPixelBufferGetWidth(pixel) == mode.width, CVPixelBufferGetHeight(pixel) == mode.height else {
-                    throw WebcamError(message: "The decoded camera dimensions differ from the selected mode.")
+                    throw WebcamError(message: "The phone sent a different picture size than \(mode.title). Pick another capture mode and start again.",
+                                      detail: "Decoded \(CVPixelBufferGetWidth(pixel))x\(CVPixelBufferGetHeight(pixel)), expected \(mode.width)x\(mode.height).")
                 }
                 let frame = self.sharpener.process(pixel)
                 try camera.send(frame)
@@ -605,7 +674,7 @@ final class CaptureController {
             switch try ScrcpyHeader(readExactly(12, from: fd)) {
             case let .session(width, height):
                 guard width == mode.width, height == mode.height else {
-                    throw WebcamError(message: "Requested \(mode.width)x\(mode.height), but the phone offered \(width)x\(height).")
+                    throw WebcamError(message: "The phone's camera can't capture \(mode.width)x\(mode.height). It offered \(width)x\(height). Pick another capture mode and start again.")
                 }
             case let .packet(size, pts, _):
                 // The camera can take a while to open; once media flows, a 3 second gap means the link is gone.
@@ -645,7 +714,7 @@ final class CaptureController {
         do {
             try FileManager.default.createDirectory(at: Self.sessionFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(record).write(to: Self.sessionFile, options: .atomic)
-        } catch { fputs("Could not record the session. \(error.localizedDescription)\n", stderr) }
+        } catch { fputs("Could not record the session. \(error.logText)\n", stderr) }
     }
 
     /// Cleans up after a session the app didn't get to end, touching only what that session recorded.
@@ -666,14 +735,14 @@ final class CaptureController {
             if forwards.contains(forward) {
                 _ = try ADB.command(["-s", record.serial, "forward", "--remove", "tcp:\(record.port)"], timeout: 5)
             }
-        } catch { fputs("Stale forward cleanup failed. \(error.localizedDescription)\n", stderr) }
+        } catch { fputs("Stale forward cleanup failed. \(error.logText)\n", stderr) }
         do {
             let ps = try runTool(URL(fileURLWithPath: "/bin/ps"), ["-o", "args=", "-p", "\(record.pid)"], timeout: 5, onLaunch: { _ in })
             if let ps, ps.status == 0, ps.text.contains("scid=\(record.scid)") { kill(record.pid, SIGTERM) }
-        } catch { fputs("Stale process cleanup failed. \(error.localizedDescription)\n", stderr) }
+        } catch { fputs("Stale process cleanup failed. \(error.logText)\n", stderr) }
         guard record.remote.hasPrefix(remotePrefix) else { return }
         do { _ = try ADB.command(["-s", record.serial, "shell", "rm", "-f", record.remote], timeout: 5) }
-        catch { fputs("Stale phone cleanup failed. \(error.localizedDescription)\n", stderr) }
+        catch { fputs("Stale phone cleanup failed. \(error.logText)\n", stderr) }
     }
 
     private func setReadTimeout(_ fd: Int32, seconds: Int) {
@@ -681,13 +750,16 @@ final class CaptureController {
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     }
 
-    private func connect(port: Int, generation: Int) throws -> Int32 {
+    private func connect(port: Int, generation: Int, server: Process) throws -> Int32 {
         // ADB may accept TCP before the phone has opened its abstract socket.
         let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline {
+        // A server that already exited won't accept, so its error shows at once instead of after the deadline.
+        while Date() < deadline, server.isRunning {
             if ending(generation) { throw WebcamError(message: "Capture cancelled.") }
             let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-            guard fd >= 0 else { throw WebcamError(message: "Could not create the ADB video socket.") }
+            guard fd >= 0 else {
+                throw WebcamError(message: Self.socketFailed, detail: "Video socket: \(String(cString: strerror(errno))).")
+            }
             var timeout = timeval(tv_sec: 0, tv_usec: 200_000)
             setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
             var dummy: UInt8 = 1
@@ -699,19 +771,24 @@ final class CaptureController {
             Darwin.close(fd)
             usleep(50_000)
         }
-        throw TransportError(message: "The scrcpy camera server did not accept its video connection.")
+        throw TransportError(message: Self.cameraDidNotStart, detail: "The server didn't accept its video connection.")
     }
+
+    private static let socketFailed = "The Mac couldn't open a local connection to the phone. Quit and reopen the app, then start again."
+    private static let cameraDidNotStart = "The phone's camera didn't start. Unlock the phone, close any app that uses the camera and start again."
 
     /// The server is already waiting for this socket once the video socket got its dummy byte.
     private func connectControl(port: Int) throws -> Int32 {
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw WebcamError(message: "Could not create the ADB control socket.") }
+        guard fd >= 0 else {
+            throw WebcamError(message: Self.socketFailed, detail: "Control socket: \(String(cString: strerror(errno))).")
+        }
         // A write after the phone went away should fail, not kill the app.
         var on: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         guard Self.connectLocal(fd, port: port) else {
             Darwin.close(fd)
-            throw TransportError(message: "The scrcpy camera server did not accept its control connection.")
+            throw TransportError(message: Self.cameraDidNotStart, detail: "The server didn't accept its control connection.")
         }
         return fd
     }
@@ -738,7 +815,8 @@ final class CaptureController {
                 let received = Darwin.recv(fd, bytes.baseAddress!.advanced(by: offset), count - offset, 0)
                 if received <= 0 {
                     if received < 0, errno == EINTR { continue }
-                    throw TransportError(message: "The phone's video stream ended or timed out.")
+                    throw TransportError(message: "The video from the phone stopped arriving. Check the cable and start again.",
+                                         detail: received == 0 ? "The video socket closed." : "Video socket: \(String(cString: strerror(errno))).")
                 }
                 offset += received
             }

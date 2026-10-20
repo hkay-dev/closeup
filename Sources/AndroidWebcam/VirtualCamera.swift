@@ -20,10 +20,10 @@ final class VirtualCamera {
     private static func objectIDs(_ object: CMIOObjectID, selector: Int) throws -> [CMIOObjectID] {
         var property = address(selector)
         var size: UInt32 = 0, used: UInt32 = 0
-        try checkStatus(CMIOObjectGetPropertyDataSize(object, &property, 0, nil, &size), "Reading camera device metadata")
+        try checkStatus(CMIOObjectGetPropertyDataSize(object, &property, 0, nil, &size), "Reading camera device metadata", Plain.obs)
         var ids = [CMIOObjectID](repeating: 0, count: Int(size) / MemoryLayout<CMIOObjectID>.size)
         try ids.withUnsafeMutableBytes {
-            try checkStatus(CMIOObjectGetPropertyData(object, &property, 0, nil, size, &used, $0.baseAddress), "Reading camera device identifiers")
+            try checkStatus(CMIOObjectGetPropertyData(object, &property, 0, nil, size, &used, $0.baseAddress), "Reading camera device identifiers", Plain.obs)
         }
         return ids
     }
@@ -37,7 +37,7 @@ final class VirtualCamera {
                 UInt32(MemoryLayout<Unmanaged<CFString>?>.size), &used, &uid)
             if status == noErr, let uid, uid.takeRetainedValue() as String == obsUID { return device }
         }
-        throw WebcamError(message: "OBS Virtual Camera is missing. Install and approve OBS's camera extension once.")
+        throw WebcamError(message: "OBS's camera extension isn't installed or approved. Open Setup from the menu to finish it.")
     }
 
     init(fps: Int32) throws {
@@ -50,13 +50,13 @@ final class VirtualCamera {
             var used: UInt32 = 0
             let status = CMIOObjectGetPropertyData(candidate, &property, 0, nil, UInt32(MemoryLayout<UInt32>.size), &used, &direction)
             return status == noErr && direction == 0
-        }) else { throw WebcamError(message: "The OBS camera sink stream is missing.") }
+        }) else { throw WebcamError(message: Plain.obs, detail: "The OBS camera sink stream is missing.") }
         stream = sink
         var copiedQueue: Unmanaged<CMSimpleQueue>?
-        try checkStatus(CMIOStreamCopyBufferQueue(stream, { _, _, _ in }, nil, &copiedQueue), "Opening the camera buffer queue")
+        try checkStatus(CMIOStreamCopyBufferQueue(stream, { _, _, _ in }, nil, &copiedQueue), "Opening the camera buffer queue", Plain.obs)
         queue = copiedQueue?.takeRetainedValue()
-        guard queue != nil else { throw WebcamError(message: "The OBS camera buffer queue is unavailable.") }
-        try checkStatus(CMIODeviceStartStream(device, stream), "Starting the OBS camera sink")
+        guard queue != nil else { throw WebcamError(message: Plain.obs, detail: "The OBS camera buffer queue is unavailable.") }
+        try checkStatus(CMIODeviceStartStream(device, stream), "Starting the OBS camera sink", Plain.obs)
         started = true
     }
 
@@ -70,7 +70,7 @@ final class VirtualCamera {
         let status = CMSimpleQueueEnqueue(queue, element: UnsafeRawPointer(retained.toOpaque()))
         if status != noErr {
             retained.release()
-            try checkStatus(status, "Publishing a webcam frame")
+            try checkStatus(status, "Publishing a webcam frame", Plain.obs)
         }
     }
 

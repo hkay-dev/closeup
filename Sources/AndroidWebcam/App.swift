@@ -396,6 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         case let .failure(error):
             // A failed stream isn't an unplug, so it leaves autoStartBlocked alone.
             devices = []
+            if discoveryError != error.localizedDescription { fputs("Phone discovery failed. \(error.logText)\n", stderr) }
             discoveryError = error.localizedDescription
         }
         lensQueries.formIntersection(Set(devices.map(\.serial)))
@@ -483,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 case .success: break
                 case let .failure(error):
                     self.lensQueries.remove(serial)
-                    fputs("Could not list the phone's cameras. \(error.localizedDescription)\n", stderr)
+                    fputs("Could not list the phone's cameras. \(error.logText)\n", stderr)
                 }
                 self.refreshUI()
             }
@@ -796,7 +797,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         frameLock.unlock()
         guard let frame, let view = window?.contentView as? PreviewView else { return }
         do { try view.show(frame) }
-        catch { note = "Preview failed. \(error.localizedDescription)"; refreshUI() }
+        catch {
+            fputs("Preview failed. \(error.logText)\n", stderr)
+            note = "The preview couldn't show the picture. Close it and open it again."
+            refreshUI()
+        }
     }
 
     private func showHeaderFrame() {
@@ -820,7 +825,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    /// What a notification is about. Each topic keeps one notification, so a newer one replaces the last.
+    /// What a notification is about. Each topic keeps one notification, so a newer one takes the last one's place.
+    /// Ids are "<topic>.<uuid>": macOS shows a request that reuses a delivered id as a silent update, with no banner.
     private enum Notice: String {
         case run        // live, stopped
         case cable      // disconnected, reconnected
@@ -836,15 +842,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         content.body = body
         content.threadIdentifier = "webcam"
         if let category { content.categoryIdentifier = category }
-        let request = UNNotificationRequest(identifier: notice.rawValue, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error { fputs("Notification failed. \(error.localizedDescription)\n", stderr) }
+        let request = UNNotificationRequest(identifier: "\(notice.rawValue).\(UUID().uuidString)", content: content, trigger: nil)
+        withdraw([notice]) {
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error { fputs("Notification failed. \(error.localizedDescription)\n", stderr) }
+            }
         }
     }
 
-    private func withdraw(_ notices: [Notice]) {
+    private func withdraw(_ notices: [Notice], then next: @escaping () -> Void = {}) {
         guard canNotify else { return }
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: notices.map(\.rawValue))
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let ids = delivered.map(\.request.identifier).filter { id in notices.contains { id.hasPrefix("\($0.rawValue).") } }
+            center.removeDeliveredNotifications(withIdentifiers: ids)
+            next()
+        }
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -885,7 +898,7 @@ enum AndroidWebcamApp {
             app.setActivationPolicy(.accessory)
             app.delegate = delegate
             withExtendedLifetime(delegate) { app.run() }
-        } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+        } catch { fputs("\(error.logText)\n", stderr); exit(1) }
     }
 
     static func diagnose() throws {
@@ -893,7 +906,7 @@ enum AndroidWebcamApp {
         var driver = false
         var driverError: String?
         do { _ = try VirtualCamera.findDevice(); driver = true }
-        catch { driverError = error.localizedDescription }
+        catch { driverError = error.logText }
         let report: [String: Any] = [
             "usb_devices": devices.map { ["serial": $0.serial, "model": $0.model, "status": $0.status] },
             "scrcpy_server_version": ScrcpyServer.version, "bundled_server": ADB.serverURL != nil,
