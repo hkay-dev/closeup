@@ -20,3 +20,7 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-19: Reconnect only after a session has sent a frame and only for transport errors (adb, socket). Setup errors stop capture with their message, so a mode the phone can't run doesn't loop. kata:android-webcam#gb7k
 - 2026-10-19: When OBS opens during capture, warn and keep capturing, so a call isn't cut off. kata:android-webcam#1b4s
 - 2026-10-19: Start in 1080p at 30 fps, which keeps the phone cooler than 4K60, and remember the last phone and mode. kata:android-webcam#xzjd
+- 2026-10-19: Menu layout C, a native menu with a live header (Harsha's pick from `design/mockups/index.html` in the sandbox). Image controls live in their own window because sliders don't fit in menus.
+- 2026-10-19: Apache-2.0 license (Harsha's call), matching the bundled scrcpy server. kata:android-webcam#w5gj
+- 2026-10-19: Launch at login is a setting, off by default (Harsha's call), through `SMAppService.mainApp`.
+- 2026-10-19: Ship our own build of scrcpy-server 5.0.1 (Harsha's call): `server/webcam.patch` adds exposure, white balance, focus lock, noise reduction and edge options plus control message type 100, built from source by `scripts/build-server.sh`. This replaces the 5.0.1 download line. kata:android-webcam#wpc4

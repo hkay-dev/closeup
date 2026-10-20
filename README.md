@@ -6,7 +6,7 @@ This is a development scaffold. The Android transport and camera output need a l
 
 ## Build
 
-You need Xcode or the Swift toolchain, and `adb` from Android platform tools. The script uses the selected Xcode; set `DEVELOPER_DIR` to use another. On the first build it downloads scrcpy-server 5.0.1 into `build/cache` and checks its SHA-256 on every build. Set `SCRCPY_SERVER_PATH` to use a local copy; it is checked the same way.
+You need Xcode or the Swift toolchain, and `adb` from Android platform tools. The script uses the selected Xcode; set `DEVELOPER_DIR` to use another. It builds the phone server with `scripts/build-server.sh`, which needs a JDK and the Android SDK with platform 36 and build-tools 36.0.0 (see `server/README.md`). Set `SCRCPY_SERVER_PATH` to bundle another server jar instead; its version must be `5.0.1-webcam.1`.
 
 ```sh
 ./scripts/build-app.sh
@@ -16,7 +16,7 @@ The app is written to `build/Android Webcam.app` and signed locally with an ad-h
 
 ## Run
 
-Open the built app. Its camera icon appears in the menu bar. Capture starts only when you choose **Start Android Webcam**.
+Open the built app. Its camera icon appears in the menu bar. On first run a setup window checks for platform tools, the OBS camera extension, the phone, USB debugging and a closed OBS. Capture starts only when you choose **Start Webcam**, or when the phone is plugged in if you turn that on in Settings.
 
 - Connect a USB Android phone running Android 12 or later and authorize USB debugging.
 - Quit OBS. Its approved camera extension remains installed.
@@ -24,11 +24,15 @@ Open the built app. Its camera icon appears in the menu bar. Capture starts only
 - Select **OBS Virtual Camera** in the receiving app.
 - Toggle **Show Preview** independently of capture.
 
-The app captures video only. It does not record footage, open a microphone, capture the desktop, install a login job, or transmit video to an Internet service.
+The app sends video only. It does not record footage, capture the desktop, or transmit video to an Internet service. It opens the microphone only while **Check Audio Sync** runs, to time a clap, and keeps nothing. It adds a login item only if you turn on **Launch at login** in Settings.
+
+## Menu
+
+The menu shows a live thumbnail, the status, and the phone's temperature and battery while capturing. Below that sit the main action (Finish Setup, Start or Stop), a cool-down shortcut when the phone runs hot, then Phone, Capture Mode and Camera (lens, zoom, flashlight) submenus. **Image Settings** sets exposure, white balance, focus, noise reduction and sharpness on the phone, plus extra sharpening on the Mac. Notifications cover start, errors, heat and a loose cable.
 
 ## Data flow
 
-ADB starts the pinned scrcpy-server 5.0.1 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets. VideoToolbox decodes them to NV12 pixel buffers. CoreMediaIO sends those buffers directly to the OBS extension's sink stream. An optional preview displays the latest decoded buffer.
+ADB starts this project's build of scrcpy-server 5.0.1 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets, and a second socket carries camera controls. VideoToolbox decodes the video to NV12 pixel buffers, an optional Core Image step sharpens them, and CoreMediaIO sends them directly to the OBS extension's sink stream. An optional preview displays the same frames.
 
 Preview dimensions never become camera-output dimensions. There is no scrcpy desktop window or OBS scene in this path.
 
@@ -72,6 +76,6 @@ Automated menu inspection timed out, so menu actions still need a manual check.
 
 The app needs `adb` from Android platform tools. It looks in `$ADB`, `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`, `/opt/homebrew/bin` and `/usr/local/bin`. A distributable app would need its own dependency packaging.
 
-The bundled [scrcpy server](https://github.com/Genymobile/scrcpy/tree/v5.0.1) is Apache-2.0 software from Genymobile. Its license is included in the app's resources. Its [5.0.1 server protocol](https://github.com/Genymobile/scrcpy/blob/v5.0.1/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java) is pinned to the matching server version.
+The bundled server is [scrcpy](https://github.com/Genymobile/scrcpy/tree/v5.0.1) 5.0.1, Apache-2.0 software from Genymobile, built from source with this project's patch in `server/webcam.patch`. Its license is included in the app's resources. Its [5.0.1 server protocol](https://github.com/Genymobile/scrcpy/blob/v5.0.1/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java) is unchanged apart from the additions in `server/README.md`.
 
 The [pyvirtualcam macOS backend](https://github.com/letmaik/pyvirtualcam/tree/main/pyvirtualcam/native_macos_obs_cmioextension) documents the OBS sink-stream route. This app uses native CoreMediaIO APIs and does not include a Python runtime.

@@ -1,0 +1,450 @@
+diff --git a/server/src/main/java/com/genymobile/scrcpy/Options.java b/server/src/main/java/com/genymobile/scrcpy/Options.java
+index 26a6ba9..afc9490 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/Options.java
++++ b/server/src/main/java/com/genymobile/scrcpy/Options.java
+@@ -12,6 +12,7 @@ import com.genymobile.scrcpy.video.CameraAspectRatio;
+ import com.genymobile.scrcpy.video.CameraFacing;
+ import com.genymobile.scrcpy.video.VideoCodec;
+ import com.genymobile.scrcpy.video.VideoSource;
++import com.genymobile.scrcpy.video.WebcamImage;
+ import com.genymobile.scrcpy.wrappers.WindowManager;
+ 
+ import android.graphics.Rect;
+@@ -49,6 +50,7 @@ public class Options {
+     private int cameraFps;
+     private boolean cameraHighSpeed;
+     private boolean cameraTorch;
++    private final WebcamImage webcamImage = new WebcamImage();
+     private boolean showTouches;
+     private boolean stayAwake;
+     private int screenOffTimeout = -1;
+@@ -195,6 +197,10 @@ public class Options {
+         return cameraTorch;
+     }
+ 
++    public WebcamImage getWebcamImage() {
++        return webcamImage;
++    }
++
+     public boolean getShowTouches() {
+         return showTouches;
+     }
+@@ -521,6 +527,21 @@ public class Options {
+                 case "camera_torch":
+                     options.cameraTorch = Boolean.parseBoolean(value);
+                     break;
++                case "webcam_exposure":
++                    options.webcamImage.exposureEv = parseFloat(key, value);
++                    break;
++                case "webcam_awb":
++                    options.webcamImage.awb = WebcamImage.parseName(key, value, WebcamImage.AWB_NAMES);
++                    break;
++                case "webcam_focus":
++                    options.webcamImage.focus = WebcamImage.parseName(key, value, WebcamImage.FOCUS_NAMES);
++                    break;
++                case "webcam_nr":
++                    options.webcamImage.nr = WebcamImage.parseName(key, value, WebcamImage.LEVEL_NAMES);
++                    break;
++                case "webcam_edge":
++                    options.webcamImage.edge = WebcamImage.parseName(key, value, WebcamImage.LEVEL_NAMES);
++                    break;
+                 case "new_display":
+                     options.newDisplay = parseNewDisplay(value);
+                     break;
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
+index 777873b..f6afe34 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
+@@ -1,6 +1,7 @@
+ package com.genymobile.scrcpy.control;
+ 
+ import com.genymobile.scrcpy.model.Position;
++import com.genymobile.scrcpy.video.WebcamImage;
+ 
+ /**
+  * Union of all supported event types, identified by their {@code type}.
+@@ -30,6 +31,7 @@ public final class ControlMessage {
+     public static final int TYPE_CAMERA_ZOOM_OUT = 20;
+     public static final int TYPE_RESIZE_DISPLAY = 21;
+     public static final int TYPE_SCAN_FILE = 22;
++    public static final int TYPE_WEBCAM_SET_IMAGE = 100;
+ 
+     public static final long SEQUENCE_INVALID = 0;
+ 
+@@ -60,6 +62,7 @@ public final class ControlMessage {
+     private int productId;
+     private int width;
+     private int height;
++    private WebcamImage webcamImage;
+ 
+     private ControlMessage() {
+     }
+@@ -195,6 +198,13 @@ public final class ControlMessage {
+         return msg;
+     }
+ 
++    public static ControlMessage createWebcamSetImage(WebcamImage webcamImage) {
++        ControlMessage msg = new ControlMessage();
++        msg.type = TYPE_WEBCAM_SET_IMAGE;
++        msg.webcamImage = webcamImage;
++        return msg;
++    }
++
+     public int getType() {
+         return type;
+     }
+@@ -286,4 +296,8 @@ public final class ControlMessage {
+     public int getHeight() {
+         return height;
+     }
++
++    public WebcamImage getWebcamImage() {
++        return webcamImage;
++    }
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
+index b2591d6..1ce0e86 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
+@@ -2,6 +2,7 @@ package com.genymobile.scrcpy.control;
+ 
+ import com.genymobile.scrcpy.model.Position;
+ import com.genymobile.scrcpy.util.Binary;
++import com.genymobile.scrcpy.video.WebcamImage;
+ 
+ import java.io.BufferedInputStream;
+ import java.io.DataInputStream;
+@@ -64,6 +65,8 @@ public class ControlMessageReader {
+                 return parseResizeDisplay();
+             case ControlMessage.TYPE_SCAN_FILE:
+                 return parseScanFile();
++            case ControlMessage.TYPE_WEBCAM_SET_IMAGE:
++                return parseWebcamSetImage();
+             default:
+                 throw new ControlProtocolException("Unknown event type: " + type);
+         }
+@@ -190,6 +193,16 @@ public class ControlMessageReader {
+         return ControlMessage.createScanFile(path);
+     }
+ 
++    private ControlMessage parseWebcamSetImage() throws IOException {
++        WebcamImage image = new WebcamImage();
++        image.exposureEv = dis.readInt() / 100f;
++        image.awb = dis.readUnsignedByte();
++        image.focus = dis.readUnsignedByte();
++        image.nr = dis.readUnsignedByte();
++        image.edge = dis.readUnsignedByte();
++        return ControlMessage.createWebcamSetImage(image);
++    }
++
+     private Position parsePosition() throws IOException {
+         int x = dis.readInt();
+         int y = dis.readInt();
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+index 55d6e11..cdea7fe 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+@@ -432,6 +432,9 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+                 case ControlMessage.TYPE_CAMERA_ZOOM_OUT:
+                     cameraCapture.zoomOut();
+                     return true;
++                case ControlMessage.TYPE_WEBCAM_SET_IMAGE:
++                    cameraCapture.setWebcamImage(msg.getWebcamImage());
++                    return true;
+                 default:
+                     // fall through
+             }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java b/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java
+index 4f4605e..312808e 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java
++++ b/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java
+@@ -27,6 +27,7 @@ import android.util.Range;
+ import java.text.DecimalFormat;
+ import java.util.Collections;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Objects;
+ import java.util.SortedSet;
+ import java.util.TreeSet;
+@@ -186,6 +187,15 @@ public final class LogUtils {
+                         }
+                     }
+ 
++                    float[] focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
++                    if (focalLengths != null && focalLengths.length > 0) {
++                        float focal = focalLengths[0];
++                        for (float f : focalLengths) {
++                            focal = Math.min(focal, f);
++                        }
++                        builder.append(", focal=").append(String.format(Locale.US, "%.2f", focal));
++                    }
++
+                     builder.append(')');
+ 
+                     if (includeSizes) {
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java b/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+index fb52969..b7be6cd 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+@@ -25,6 +25,8 @@ import android.hardware.camera2.CameraDevice;
+ import android.hardware.camera2.CameraManager;
+ import android.hardware.camera2.CaptureFailure;
+ import android.hardware.camera2.CaptureRequest;
++import android.hardware.camera2.CaptureResult;
++import android.hardware.camera2.TotalCaptureResult;
+ import android.hardware.camera2.params.OutputConfiguration;
+ import android.hardware.camera2.params.SessionConfiguration;
+ import android.hardware.camera2.params.StreamConfigurationMap;
+@@ -32,6 +34,7 @@ import android.media.MediaCodec;
+ import android.os.Handler;
+ import android.os.HandlerThread;
+ import android.util.Range;
++import android.util.Rational;
+ import android.view.Surface;
+ 
+ import java.io.IOException;
+@@ -56,6 +59,14 @@ public class CameraCapture extends SurfaceCapture {
+ 
+     private static final float ZOOM_FACTOR = 1 + 1 / 16f;
+ 
++    // Indexed as in WebcamImage; focus "locked" keeps the continuous mode and locks it with an AF trigger
++    private static final int[] AWB_MODES = {CaptureRequest.CONTROL_AWB_MODE_AUTO, CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT,
++            CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT, CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT};
++    private static final int[] AF_MODES = {CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO};
++    private static final int[] NR_MODES = {CaptureRequest.NOISE_REDUCTION_MODE_OFF, CaptureRequest.NOISE_REDUCTION_MODE_FAST,
++            CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY};
++    private static final int[] EDGE_MODES = {CaptureRequest.EDGE_MODE_OFF, CaptureRequest.EDGE_MODE_FAST, CaptureRequest.EDGE_MODE_HIGH_QUALITY};
++
+     private final String explicitCameraId;
+     private final CameraFacing cameraFacing;
+     private final Size explicitSize;
+@@ -67,6 +78,7 @@ public class CameraCapture extends SurfaceCapture {
+     private final float angle;
+     private final boolean initialTorch;
+     private float zoom;
++    private WebcamImage webcamImage;
+ 
+     private VideoConstraints videoConstraints;
+ 
+@@ -89,6 +101,11 @@ public class CameraCapture extends SurfaceCapture {
+     private boolean started;
+     private CaptureRequest.Builder requestBuilder;
+     private CameraCaptureSession currentSession;
++    private CameraCharacteristics characteristics;
++    private CaptureRequest templateRequest; // the template's defaults, for values the camera does not support
++    private boolean focusLockPending;
++    private boolean focusLocked;
++    private int focusWaitFrames;
+ 
+     public CameraCapture(Options options) {
+         this.explicitCameraId = options.getCameraId();
+@@ -103,6 +120,7 @@ public class CameraCapture extends SurfaceCapture {
+         this.angle = options.getAngle();
+         this.initialTorch = options.getCameraTorch();
+         this.zoom = options.getCameraZoom();
++        this.webcamImage = options.getWebcamImage();
+     }
+ 
+     @Override
+@@ -304,7 +322,7 @@ public class CameraCapture extends SurfaceCapture {
+ 
+                 CameraManager cameraManager = ServiceManager.getCameraManager();
+                 try {
+-                    CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
++                    characteristics = cameraManager.getCameraCharacteristics(cameraId);
+                     zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+                 } catch (CameraAccessException e) {
+                     Ln.w("Could not get camera characteristics");
+@@ -313,6 +331,7 @@ public class CameraCapture extends SurfaceCapture {
+                 try {
+                     requestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                     requestBuilder.addTarget(captureSurface);
++                    templateRequest = requestBuilder.build();
+ 
+                     if (fps > 0) {
+                         requestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(fps, fps));
+@@ -327,6 +346,8 @@ public class CameraCapture extends SurfaceCapture {
+                         requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
+                     }
+ 
++                    applyWebcamImage();
++
+                     CaptureRequest request = requestBuilder.build();
+                     setRepeatingRequest(session, request);
+                     currentSession = session;
+@@ -367,6 +388,8 @@ public class CameraCapture extends SurfaceCapture {
+             }
+             currentSession = null;
+             requestBuilder = null;
++            focusLockPending = false;
++            focusLocked = false;
+             started = false;
+         });
+ 
+@@ -457,6 +480,13 @@ public class CameraCapture extends SurfaceCapture {
+                 // Called for each frame captured, do nothing
+             }
+ 
++            @Override
++            public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
++                if (focusLockPending && session == currentSession) {
++                    lockFocusWhenSettled(result);
++                }
++            }
++
+             @Override
+             public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
+                 Ln.w("Camera capture failed: frame " + failure.getFrameNumber());
+@@ -472,6 +502,116 @@ public class CameraCapture extends SurfaceCapture {
+         }
+     }
+ 
++    public void setWebcamImage(WebcamImage image) {
++        cameraHandler.post(() -> {
++            assertCameraThread();
++            webcamImage = image;
++            if (currentSession != null && requestBuilder != null) {
++                try {
++                    applyWebcamImage();
++                    setRepeatingRequest(currentSession, requestBuilder.build());
++                } catch (CameraAccessException | IllegalStateException e) {
++                    Ln.e("Camera error", e);
++                }
++            }
++        });
++    }
++
++    // Unset values leave the request as it is
++    private void applyWebcamImage() throws CameraAccessException {
++        assertCameraThread();
++        WebcamImage image = webcamImage;
++        if (!Float.isNaN(image.exposureEv)) {
++            Range<Integer> range = characteristics != null ? characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE) : null;
++            Rational step = characteristics != null ? characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP) : null;
++            int value = 0;
++            if (range != null && step != null && step.floatValue() > 0 && range.getLower() < range.getUpper()) {
++                value = range.clamp(Math.round(image.exposureEv / step.floatValue()));
++            } else if (image.exposureEv != 0) {
++                Ln.w("Camera does not support exposure compensation, using the default");
++            }
++            requestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, value);
++        }
++        if (image.awb >= 0) {
++            setMode(CaptureRequest.CONTROL_AWB_MODE, CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES, AWB_MODES, image.awb, "white balance");
++        }
++        if (image.nr >= 0) {
++            setMode(CaptureRequest.NOISE_REDUCTION_MODE, CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES, NR_MODES, image.nr,
++                    "noise reduction");
++        }
++        if (image.edge >= 0) {
++            setMode(CaptureRequest.EDGE_MODE, CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES, EDGE_MODES, image.edge, "edge");
++        }
++        if (image.focus >= 0) {
++            boolean lock = setMode(CaptureRequest.CONTROL_AF_MODE, CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES, AF_MODES, image.focus, "focus")
++                    && image.focus == WebcamImage.FOCUS_LOCKED;
++            if (!lock) {
++                focusLockPending = false;
++                if (focusLocked) {
++                    focusLocked = false;
++                    Ln.i("Unlock camera focus");
++                    triggerFocus(CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
++                }
++            } else if (!focusLocked && !focusLockPending) {
++                // Locked once the continuous search has settled, in onCaptureCompleted()
++                focusLockPending = true;
++                focusWaitFrames = 0;
++            }
++        }
++    }
++
++    // Sets modes[index] if the camera supports it, else the template default
++    private boolean setMode(CaptureRequest.Key<Integer> key, CameraCharacteristics.Key<int[]> availableKey, int[] modes, int index, String name) {
++        int[] available = characteristics != null ? characteristics.get(availableKey) : null;
++        if (index < modes.length && available != null) {
++            for (int mode : available) {
++                if (mode == modes[index]) {
++                    requestBuilder.set(key, mode);
++                    return true;
++                }
++            }
++        }
++        Ln.w("Camera does not support " + name + " value " + index + ", using the default");
++        Integer mode = templateRequest.get(key);
++        if (mode != null) {
++            requestBuilder.set(key, mode);
++        }
++        return false;
++    }
++
++    private void lockFocusWhenSettled(CaptureResult result) {
++        assertCameraThread();
++        Integer state = result.get(CaptureResult.CONTROL_AF_STATE);
++        boolean settled = state != null
++                && (state == CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED || state == CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED);
++        // Lock anyway after about 3 seconds at 30 fps
++        if (!settled && ++focusWaitFrames < 90) {
++            return;
++        }
++        focusLockPending = false;
++        focusLocked = true;
++        Ln.i("Lock camera focus");
++        try {
++            triggerFocus(CaptureRequest.CONTROL_AF_TRIGGER_START);
++        } catch (CameraAccessException | IllegalStateException e) {
++            Ln.e("Camera error", e);
++        }
++    }
++
++    // Sends one request with the AF trigger; the repeating request keeps CONTROL_AF_TRIGGER_IDLE
++    @TargetApi(AndroidVersions.API_31_ANDROID_12)
++    private void triggerFocus(int trigger) throws CameraAccessException {
++        requestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, trigger);
++        CaptureRequest request = requestBuilder.build();
++        requestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
++        if (highSpeed) {
++            CameraConstrainedHighSpeedCaptureSession highSpeedSession = (CameraConstrainedHighSpeedCaptureSession) currentSession;
++            highSpeedSession.captureBurst(highSpeedSession.createHighSpeedRequestList(request), null, cameraHandler);
++        } else {
++            currentSession.capture(request, null, cameraHandler);
++        }
++    }
++
+     @Override
+     public boolean isClosed() {
+         return disconnected.get();
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/WebcamImage.java b/server/src/main/java/com/genymobile/scrcpy/video/WebcamImage.java
+new file mode 100644
+index 0000000..120f87a
+--- /dev/null
++++ b/server/src/main/java/com/genymobile/scrcpy/video/WebcamImage.java
+@@ -0,0 +1,30 @@
++package com.genymobile.scrcpy.video;
++
++/**
++ * Phone image controls added for the Android Webcam app.
++ * <p>
++ * A field left unset (NaN for the exposure, -1 for the others) keeps the camera default.
++ */
++public final class WebcamImage {
++
++    public static final String[] AWB_NAMES = {"auto", "daylight", "cloudy", "incandescent", "fluorescent"};
++    public static final String[] FOCUS_NAMES = {"continuous", "locked"};
++    public static final String[] LEVEL_NAMES = {"off", "fast", "high_quality"};
++
++    public static final int FOCUS_LOCKED = 1;
++
++    public float exposureEv = Float.NaN;
++    public int awb = -1;
++    public int focus = -1;
++    public int nr = -1;
++    public int edge = -1;
++
++    public static int parseName(String key, String value, String[] names) {
++        for (int i = 0; i < names.length; ++i) {
++            if (names[i].equals(value)) {
++                return i;
++            }
++        }
++        throw new IllegalArgumentException("Invalid value for " + key + ": \"" + value + "\"");
++    }
++}

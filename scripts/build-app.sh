@@ -2,30 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-server_url=https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-server-v5.0.1
-expected=764eb6f79811d5211fe9df341120882ba9994c7a61b897d7bf3fb662e53bc536
-cache=build/cache/scrcpy-server-v5.0.1
-
 if [[ -n "${SCRCPY_SERVER_PATH:-}" ]]; then
     server=$SCRCPY_SERVER_PATH
 else
-    server=$cache
-    if [[ ! -f "$server" ]]; then
-        mkdir -p build/cache
-        echo "Downloading scrcpy-server 5.0.1."
-        curl -fsSL "$server_url" -o "$server.tmp"
-        mv "$server.tmp" "$server"
-    fi
-fi
-
-actual=$(shasum -a 256 "$server" | awk '{print $1}')
-if [[ "$actual" != "$expected" ]]; then
-    echo "The scrcpy-server 5.0.1 checksum does not match: $server" >&2
-    if [[ "$server" == "$cache" ]]; then
-        rm -f "$server"
-        echo 'Deleted the cached copy. Run the script again to download it.' >&2
-    fi
-    exit 1
+    scripts/build-server.sh
+    server=build/scrcpy-server-webcam.jar
 fi
 
 swift build -c release

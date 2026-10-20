@@ -12,5 +12,6 @@
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
     <key>NSCameraUsageDescription</key><string>Android Webcam publishes your phone's video through the installed OBS camera extension.</string>
+    <key>NSMicrophoneUsageDescription</key><string>Check Audio Sync listens to the microphone for a few seconds to time a clap against the video. Nothing is saved or sent anywhere.</string>
 </dict>
 </plist>

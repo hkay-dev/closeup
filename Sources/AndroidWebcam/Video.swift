@@ -1,3 +1,5 @@
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Foundation
 import CoreMedia
 import CoreVideo
@@ -236,5 +238,80 @@ final class FrameSampler {
         try checkStatus(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault,
             imageBuffer: frame, formatDescription: format!, sampleTiming: &timing, sampleBufferOut: &sample), "Preparing a decoded frame")
         return sample!
+    }
+}
+
+/// Sharpens NV12 frames with Core Image on the GPU. Thread-safe amount; 0 returns the input unchanged.
+final class FrameSharpener {
+    private let context: CIContext
+    private let filter = CIFilter.sharpenLuminance()
+    private let amountLock = NSLock()
+    private let renderLock = NSLock()
+    private var storedAmount: Float = 0
+    private var pool: CVPixelBufferPool?
+    private var poolWidth = 0, poolHeight = 0
+    private var poolFormat: OSType = 0
+    private var failureLogged = false
+
+    init() {
+        // No color management: Core Image converts YCbCr to RGB with the frame's matrix, sharpens,
+        // and converts back with the same matrix, so colors don't shift.
+        context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull(),
+                                      .cacheIntermediates: false, .useSoftwareRenderer: false])
+        filter.radius = 1.5
+    }
+
+    var amount: Float {
+        get { amountLock.lock(); defer { amountLock.unlock() }; return storedAmount }
+        set { amountLock.lock(); storedAmount = min(max(newValue, 0), 1); amountLock.unlock() }
+    }
+
+    func process(_ frame: CVPixelBuffer) -> CVPixelBuffer {
+        let amount = self.amount
+        guard amount > 0 else { return frame }
+        renderLock.lock(); defer { renderLock.unlock() }
+        do {
+            let output = try outputBuffer(like: frame)
+            // Copy the color tags first: Core Image picks the RGB to YCbCr matrix from the destination's tags.
+            CVBufferPropagateAttachments(frame, output)
+            filter.inputImage = CIImage(cvPixelBuffer: frame, options: [.colorSpace: NSNull()])
+            filter.sharpness = amount
+            defer { filter.inputImage = nil }
+            guard let image = filter.outputImage else { throw WebcamError(message: "The sharpen filter gave no image.") }
+            let destination = CIRenderDestination(pixelBuffer: output)
+            destination.colorSpace = nil
+            _ = try context.startTask(toRender: image, to: destination).waitUntilCompleted()
+            return output
+        } catch {
+            if !failureLogged {
+                failureLogged = true
+                fputs("Mac sharpening failed, sending frames unsharpened: \(error.localizedDescription)\n", stderr)
+            }
+            return frame
+        }
+    }
+
+    /// A buffer from a pool of IOSurface-backed NV12 buffers matching the frame, rebuilt when its size or format changes.
+    private func outputBuffer(like frame: CVPixelBuffer) throws -> CVPixelBuffer {
+        let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
+        let format = CVPixelBufferGetPixelFormatType(frame)
+        guard format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        else { throw WebcamError(message: "Sharpening needs NV12 frames.") }
+        if pool == nil || width != poolWidth || height != poolHeight || format != poolFormat {
+            pool = nil
+            let attributes = [
+                kCVPixelBufferPixelFormatTypeKey: format,
+                kCVPixelBufferWidthKey: width,
+                kCVPixelBufferHeightKey: height,
+                kCVPixelBufferIOSurfacePropertiesKey: [:] as [String: Any],
+                kCVPixelBufferMetalCompatibilityKey: true
+            ] as CFDictionary
+            let poolAttributes = [kCVPixelBufferPoolMinimumBufferCountKey: 4] as CFDictionary
+            try checkStatus(CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes, attributes, &pool), "Creating sharpening buffers")
+            poolWidth = width; poolHeight = height; poolFormat = format
+        }
+        var output: CVPixelBuffer?
+        try checkStatus(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool!, &output), "Getting a sharpening buffer")
+        return output!
     }
 }

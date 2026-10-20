@@ -29,9 +29,9 @@ No app on the phone and no cloud. It runs the open-source scrcpy server over USB
 
 - Capture modes today: 4K / 60, 1080p / 60, 1080p / 30 (default), 1080p / 120 experimental. No silent resolution fallback.
 - USB only (kata:android-webcam#0hz3). Keeps the OBS camera extension (kata:android-webcam#t190), which advertises 1920x1080 BGRA.
-- Video only. Never records, never opens a microphone, never sends video to the Internet.
-- Planned: phone heat and battery, reconnect, notifications, start on plug-in, zoom and flashlight, phone-side image controls, a Mac-side sharpen step, a lip-sync test.
-- Undecided: the product name (placeholder "Phone Webcam"; "Android" can't lead the name), the license, launch at login.
+- Video only. Never records and never sends video to the Internet. The microphone opens only during the on-demand audio sync check.
+- Undecided: the product name (placeholder "Phone Webcam"; "Android" can't lead the name).
+- Decided 2026-10-19: Apache-2.0 license; launch at login as a setting, off by default; menu layout C (menu with a live header).
 
 ## Evidence on Hand
 

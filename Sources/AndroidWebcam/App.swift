@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreMedia
+import UserNotifications
 import VideoToolbox
 
 final class PreviewView: NSView {
@@ -30,67 +31,140 @@ final class PreviewView: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     private static let obsBundleID = "com.obsproject.obs-studio"
-    private static let serialKey = "phoneSerial"
-    private static let modeKey = "captureMode"
+    private static let coolModeIndex = CaptureMode.all.firstIndex { $0.title == "1080p / 30 fps" } ?? 0
 
     private let capture = CaptureController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
-    private let status = NSMenuItem(title: "Checking USB phones...", action: nil, keyEquivalent: "")
-    private let start = NSMenuItem(title: "Start Android Webcam", action: #selector(toggleCapture), keyEquivalent: "")
-    private let preview = NSMenuItem(title: "Show Preview", action: #selector(togglePreview), keyEquivalent: "")
+    private let header = MenuHeaderView()
+    private let mainAction = NSMenuItem(title: "Start Webcam", action: #selector(mainActionChosen), keyEquivalent: "s")
+    private let coolDown = NSMenuItem(title: "Switch to 1080p · 30 to cool down", action: #selector(switchToCoolMode), keyEquivalent: "")
+    private let phoneItem = NSMenuItem(title: "Phone", action: nil, keyEquivalent: "")
+    private let modeItem = NSMenuItem(title: "Capture Mode", action: nil, keyEquivalent: "")
+    private let cameraItem = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
+    private let imageItem = NSMenuItem(title: "Image Settings…", action: #selector(showImageSettings), keyEquivalent: "")
+    private let syncItem = NSMenuItem(title: "Check Audio Sync…", action: #selector(showSyncCheck), keyEquivalent: "")
+    private let preview = NSMenuItem(title: "Show Preview", action: #selector(togglePreview), keyEquivalent: "p")
+    private let zoomIn = NSMenuItem(title: "Zoom In", action: #selector(zoomInChosen), keyEquivalent: "+")
+    private let zoomOut = NSMenuItem(title: "Zoom Out", action: #selector(zoomOutChosen), keyEquivalent: "-")
+    private let flashlight = NSMenuItem(title: "Flashlight", action: #selector(toggleFlashlight), keyEquivalent: "l")
     private let phoneMenu = NSMenu()
     private let modeMenu = NSMenu()
+    private let cameraMenu = NSMenu()
+    // What each submenu was last built from. Rebuilding a submenu while it's open loses the highlight.
+    private var phoneMenuKey: String?
+    private var cameraMenuKey: String?
+
+    private let setup = SetupModel()
+    private let imageStore = ImageSettingsStore()
+    private let syncModel = SyncCheckModel()
+    private let shelf = WindowShelf()
+
     private var devices: [AndroidDevice] = []
     private var selectedSerial: String?
-    private var modeIndex = CaptureMode.all.firstIndex { $0.title == "1080p / 30 fps" } ?? 0
+    private var adbPath: String?
+    private var discoveryError: String?
+    private var extensionActive = false
+    private var modeIndex = AppDelegate.coolModeIndex
     private var discoveryInProgress = false
     private var discoveryTimer: Timer?
+    private var lenses: [String: [CameraLens]] = [:]
+    /// Phones whose lenses were listed, or are being listed, since they were plugged in.
+    private var lensQueries: Set<String> = []
+    /// A phone that start on plug-in leaves alone until it's unplugged.
+    private var autoStartBlocked: String?
+
+    // The current capture run. liveSince stays set across reconnects, for the clock and the lost state.
+    private var runDevice: AndroidDevice?
+    private var runModeIndex = 0
+    private var runLensID: String?
+    private var live = false
+    private var liveSince: Date?
+    private var stats: PhoneStats?
+    private var torchOn = false
+    private var switchingLens = false
+    private var stopRequested = false
+    /// A mode switch restarts capture without telling the user it stopped and started.
+    private var quietRestart = false
+    private var cableLoose = false
+    /// One plain line for the header: the last error or a warning.
+    private var note: String?
+
     private var signalSources: [DispatchSourceSignal] = []
     private var window: NSWindow?
-    // Written by the capture thread, read on main. At most one frame waits for the preview.
-    private let previewLock = NSLock()
+    private var clock: Timer?
+
+    // Written by the capture thread, read on main. At most one frame waits for the preview and one for the header.
+    private let frameLock = NSLock()
     private var previewOpen = false
     private var pendingFrame: CVPixelBuffer?
+    private var headerOpen = false
+    private var headerFrame: CVPixelBuffer?
+    private var headerShownAt: UInt64 = 0
+    private var syncTest: SyncTest?
+    private let headerInterval: UInt64 = {
+        var info = mach_timebase_info()
+        mach_timebase_info(&info)
+        return 100_000_000 * UInt64(info.denom) / UInt64(info.numer)    // 0.1 s in mach ticks
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let savedMode = UserDefaults.standard.string(forKey: Self.modeKey)
+        Prefs.register()
+        let savedMode = UserDefaults.standard.string(forKey: Prefs.mode)
         if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
-        statusItem.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: "Android Webcam")
-        statusItem.button?.toolTip = "Android Webcam"
-        status.isEnabled = false
-        menu.autoenablesItems = false
-        phoneMenu.autoenablesItems = false
-        modeMenu.autoenablesItems = false
+        statusItem.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
+        statusItem.button?.toolTip = appName
+        for item in [menu, phoneMenu, modeMenu, cameraMenu] { item.autoenablesItems = false }
         menu.delegate = self
-        menu.addItem(status)
+
+        let headerItem = NSMenuItem()
+        headerItem.view = header
+        menu.addItem(headerItem)
         menu.addItem(.separator())
-        start.target = self; menu.addItem(start)
-        preview.target = self; menu.addItem(preview)
-        let phone = NSMenuItem(title: "Phone", action: nil, keyEquivalent: "")
-        phone.submenu = phoneMenu; menu.addItem(phone)
-        let mode = NSMenuItem(title: "Capture Mode", action: nil, keyEquivalent: "")
-        mode.submenu = modeMenu; menu.addItem(mode)
+        menu.addItem(mainAction)
+        menu.addItem(coolDown)
+        menu.addItem(.separator())
+        phoneItem.submenu = phoneMenu; menu.addItem(phoneItem)
+        modeItem.submenu = modeMenu; menu.addItem(modeItem)
+        cameraItem.submenu = cameraMenu; menu.addItem(cameraItem)
+        menu.addItem(imageItem)
+        menu.addItem(syncItem)
+        menu.addItem(.separator())
+        menu.addItem(preview)
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp), keyEquivalent: "q"))
         for (index, mode) in CaptureMode.all.enumerated() {
             let item = NSMenuItem(title: mode.title, action: #selector(selectMode(_:)), keyEquivalent: "")
-            item.target = self; item.tag = index; modeMenu.addItem(item)
+            item.tag = index
+            modeMenu.addItem(item)
         }
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Android Webcam", action: #selector(quitApp), keyEquivalent: "q")
-        quit.target = self; menu.addItem(quit)
+        for item in menu.items + modeMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
         statusItem.menu = menu
-        capture.onStatus = { [weak self] message, active in
+
+        capture.onStatus = { [weak self] message, _ in self?.captureStatus(message) }
+        capture.onFrame = { [weak self] frame in self?.tap(frame) }
+        capture.onLive = { [weak self] isLive in self?.captureLive(isLive) }
+        capture.onPhoneStats = { [weak self] stats in self?.phoneStats(stats) }
+        capture.macSharpness = Float(imageStore.macSharpness)
+        imageStore.onChange = { [weak self] in
             guard let self else { return }
-            self.status.title = message
-            self.statusItem.button?.image = NSImage(systemSymbolName: active ? "camera.fill" : "camera",
-                                                    accessibilityDescription: "Android Webcam")
-            self.updateControls()
+            self.capture.setImage(self.imageStore.phone)
+            self.capture.macSharpness = Float(self.imageStore.macSharpness)
         }
-        capture.onFrame = { [weak self] frame in self?.queuePreview(frame) }
-        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(applicationLaunched(_:)),
-                                                          name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        syncModel.begin = { [weak self] in self?.beginSyncTest() }
+
+        if canNotify {
+            UNUserNotificationCenter.current().delegate = self
+            if UserDefaults.standard.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(applicationLaunched(_:)),
+                              name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(applicationQuit(_:)),
+                              name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         for signalNumber in [SIGTERM, SIGINT] {
             signal(signalNumber, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
@@ -98,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             source.resume()
             signalSources.append(source)
         }
+        refreshUI()
         refreshDevices()
         let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refreshDevices() }
         RunLoop.main.add(timer, forMode: .common)
@@ -106,85 +181,487 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard capture.running else { return .terminateNow }
-        status.title = "Stopping webcam..."
+        stopRequested = true
+        refreshUI()
         capture.stop { NSApp.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }
 
-    func menuWillOpen(_ menu: NSMenu) { refreshDevices(); updateControls() }
+    // MARK: Menu
+
+    func menuWillOpen(_ menu: NSMenu) {
+        frameLock.lock()
+        headerOpen = true
+        headerShownAt = 0
+        frameLock.unlock()
+        refreshDevices()
+        updateSetup()
+        refreshUI()
+        // The menu runs the loop in event tracking mode, so the clock goes in the common modes.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refreshUI() }
+        RunLoop.main.add(timer, forMode: .common)
+        clock = timer
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        frameLock.lock()
+        headerOpen = false
+        headerFrame = nil
+        frameLock.unlock()
+        clock?.invalidate()
+        clock = nil
+    }
+
+    private func refreshUI() {
+        let running = capture.running
+        header.update(headerContent())
+        statusItem.button?.image = NSImage(systemSymbolName: running ? "camera.fill" : "camera", accessibilityDescription: appName)
+
+        if running {
+            mainAction.title = "Stop Webcam"
+            mainAction.isEnabled = !stopRequested
+        } else if !setup.complete {
+            mainAction.title = "Finish Setup…"
+            mainAction.isEnabled = true
+        } else {
+            mainAction.title = "Start Webcam"
+            mainAction.isEnabled = devices.contains { $0.serial == selectedSerial && $0.authorized }
+        }
+        coolDown.isHidden = !(running && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
+
+        phoneItem.isEnabled = !devices.isEmpty
+        rebuildPhoneMenu()
+        for item in modeMenu.items {
+            item.state = item.tag == (running ? runModeIndex : modeIndex) ? .on : .off
+            item.isEnabled = !running
+        }
+        cameraItem.isEnabled = live && !switchingLens
+        rebuildCameraMenu()
+        flashlight.state = torchOn ? .on : .off
+        syncItem.isEnabled = live
+        if syncModel.live != live { syncModel.live = live }
+        preview.state = window?.isVisible == true ? .on : .off
+    }
+
+    private func headerContent() -> MenuHeaderView.Content {
+        if capture.running, let device = runDevice {
+            let mode = Self.shortTitle(CaptureMode.all[runModeIndex])
+            var content = MenuHeaderView.Content(dot: .wait, status: "Starting", picture: nil,
+                                                 model: device.model, stats: stats, note: note)
+            if stopRequested {
+                content.status = "Stopping"
+                content.picture = .init(veilTitle: "Stopping the webcam")
+            } else if live, let since = liveSince {
+                let time = Self.elapsed(since)
+                content.dot = .live
+                content.status = "Live \(time) · \(mode)"
+                content.picture = .init(badge: "LIVE \(time)")
+            } else if switchingLens {
+                content.status = "Switching camera"
+                content.picture = .init(veilTitle: "Switching camera on \(device.model)", veilText: "The camera stays open for your call.")
+            } else if liveSince != nil {
+                content.status = "Reconnecting"
+                content.picture = .init(veilTitle: "Plug the phone back in",
+                                        veilText: "The camera stays open for your call and picks up again on its own.")
+            } else {
+                content.picture = .init(veilTitle: "Starting \(device.model)",
+                                        veilText: "The phone's camera can take a few seconds to open.")
+            }
+            return content
+        }
+        if setup.steps.isEmpty {
+            return .init(dot: .off, status: "Checking setup", picture: nil, model: nil, stats: nil, note: note)
+        }
+        if let next = setup.nextStep {
+            let lines = ["Next: \(next.next)", note].compactMap { $0 }
+            return .init(dot: .off, status: "\(setup.doneCount) of \(setup.steps.count) setup steps done", picture: nil,
+                         model: nil, stats: nil, note: lines.joined(separator: "\n"))
+        }
+        let model = devices.first { $0.serial == selectedSerial }?.model
+        return .init(dot: .ready, status: "Ready",
+                     picture: .init(veilTitle: model.map { "\($0) is ready" } ?? "Ready",
+                                    veilText: "Start the webcam to see the picture."),
+                     model: model, stats: nil, note: note)
+    }
+
+    private func rebuildPhoneMenu() {
+        let key = devices.map { "\($0.serial) \($0.status) \($0.model)" }.joined(separator: ",")
+            + "|\(selectedSerial ?? "")|\(capture.running)"
+        guard key != phoneMenuKey else { return }
+        phoneMenuKey = key
+        phoneMenu.removeAllItems()
+        for (index, device) in devices.enumerated() {
+            let title = device.authorized ? device.model : "\(device.model) (allow USB debugging)"
+            let item = NSMenuItem(title: title, action: #selector(selectPhone(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = device.serial == selectedSerial ? .on : .off
+            item.isEnabled = device.authorized && !capture.running
+            phoneMenu.addItem(item)
+        }
+        if devices.isEmpty {
+            let item = NSMenuItem(title: "No USB phone connected", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            phoneMenu.addItem(item)
+        }
+    }
+
+    private func rebuildCameraMenu() {
+        let list = runDevice.map { lensList($0.serial) } ?? []
+        let checked = runLensID ?? "0"    // capture uses camera_id 0 when no lens is given
+        let key = list.map(\.id).joined(separator: ",") + "|\(checked)"
+        guard key != cameraMenuKey else { return }
+        cameraMenuKey = key
+        cameraMenu.removeAllItems()
+        for (index, lens) in list.enumerated() {
+            let item = NSMenuItem(title: lens.label, action: #selector(selectLens(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = lens.id == checked ? .on : .off
+            cameraMenu.addItem(item)
+        }
+        if list.isEmpty {
+            let item = NSMenuItem(title: "No lens list for this phone", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            cameraMenu.addItem(item)
+        }
+        cameraMenu.addItem(.separator())
+        for item in [zoomIn, zoomOut, flashlight] { cameraMenu.addItem(item) }
+    }
+
+    private static func shortTitle(_ mode: CaptureMode) -> String {
+        "\(mode.height >= 2160 ? "4K" : "\(mode.height)p") · \(mode.fps)"
+    }
+
+    private static func elapsed(_ since: Date) -> String {
+        let s = max(0, Int(Date().timeIntervalSince(since)))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    // MARK: Discovery and setup
 
     private func refreshDevices() {
         guard !capture.running, !discoveryInProgress else { return }
         discoveryInProgress = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            let adb = try? ADB.executable().path
             let result = Result { try ADB.devices() }
+            let extensionActive = (try? VirtualCamera.findDevice()) != nil
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.discoveryInProgress = false
-                let before = (self.devices, self.selectedSerial)
+                self.adbPath = adb
+                self.extensionActive = extensionActive
                 switch result {
                 case let .success(devices):
                     self.devices = devices
+                    self.discoveryError = nil
                     // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
-                    let savedSerial = UserDefaults.standard.string(forKey: Self.serialKey)
+                    let savedSerial = UserDefaults.standard.string(forKey: Prefs.serial)
                     if devices.contains(where: { $0.serial == savedSerial }) {
                         self.selectedSerial = savedSerial
                     } else if !devices.contains(where: { $0.serial == self.selectedSerial }) {
                         self.selectedSerial = devices.first(where: \.authorized)?.serial
                     }
-                    self.status.title = devices.isEmpty ? "No USB Android phone connected" :
-                        devices.contains(where: \.authorized) ? "Ready to start" : "Approve USB debugging on your phone"
-                case let .failure(error): self.status.title = error.localizedDescription
+                case let .failure(error):
+                    self.devices = []
+                    self.discoveryError = error.localizedDescription
                 }
-                // Rebuilding the Phone submenu while it's open loses the highlight, so only rebuild on a change.
-                if before != (self.devices, self.selectedSerial) { self.updateControls() }
+                let present = Set(self.devices.map(\.serial))
+                if let blocked = self.autoStartBlocked, !present.contains(blocked) { self.autoStartBlocked = nil }
+                self.lensQueries.formIntersection(present)
+                for device in self.devices where device.authorized { self.queryLenses(device.serial) }
+                self.updateSetup()
+                self.autoStartIfNeeded()
+                self.refreshUI()
+                self.showSetupOnFirstRun()
             }
         }
     }
 
-    private func updateControls() {
-        start.title = capture.running ? "Stop Android Webcam" : "Start Android Webcam"
-        start.isEnabled = capture.running || devices.contains { $0.serial == selectedSerial && $0.authorized }
-        preview.state = window?.isVisible == true ? .on : .off
-        phoneMenu.removeAllItems()
-        for (index, device) in devices.enumerated() {
-            let item = NSMenuItem(title: "\(device.model) / \(device.status)", action: #selector(selectPhone(_:)), keyEquivalent: "")
-            item.target = self; item.tag = index
-            item.state = device.serial == selectedSerial ? .on : .off
-            item.isEnabled = device.authorized && !capture.running
-            phoneMenu.addItem(item)
+    private func updateSetup() {
+        let obsOpen = !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty
+        let obsInstalled = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.obsBundleID) != nil
+        let phone = devices.first { $0.serial == selectedSerial } ?? devices.first
+        let allowed = devices.first(where: \.authorized)
+        let steps = [
+            SetupStep(id: "adb", title: "Android platform tools", done: adbPath != nil,
+                      help: adbPath.map { "adb found in \(URL(fileURLWithPath: $0).deletingLastPathComponent().path)." }
+                        ?? "Install them, for example with: brew install android-platform-tools",
+                      next: "install Android platform tools."),
+            SetupStep(id: "extension", title: "OBS camera extension", done: extensionActive,
+                      help: extensionActive ? "Installed and approved." : obsInstalled
+                        ? "Open OBS once, click Start Virtual Camera, then allow the extension in System Settings > General > Login Items & Extensions."
+                        : "Install OBS Studio 30 or later from obsproject.com, open it once and click Start Virtual Camera.",
+                      next: "turn on the OBS camera extension."),
+            SetupStep(id: "phone", title: "Phone connected over USB", done: phone != nil,
+                      help: phone.map { "\($0.model) is plugged in." } ?? discoveryError ?? "Plug it in with a USB-C data cable.",
+                      next: "plug in your phone with a USB cable."),
+            SetupStep(id: "debugging", title: "Allow USB debugging", done: allowed != nil,
+                      help: allowed.map { "Allowed on \($0.model)." }
+                        ?? "On the phone, tap Allow when it asks. Turn on Developer options first if you haven't.",
+                      next: "allow USB debugging on the phone."),
+            SetupStep(id: "obs", title: "OBS Studio closed", done: !obsOpen,
+                      help: obsOpen ? "Quit OBS Studio. It can stay installed." : "OBS can stay installed.",
+                      next: "quit OBS Studio."),
+        ]
+        if steps != setup.steps { setup.steps = steps }
+    }
+
+    private func showSetupOnFirstRun() {
+        guard !UserDefaults.standard.bool(forKey: Prefs.setupShown) else { return }
+        UserDefaults.standard.set(true, forKey: Prefs.setupShown)
+        if !setup.complete { showSetup() }
+    }
+
+    /// Starts once when the saved phone shows up. After capture ends, waits for that phone to be unplugged.
+    private func autoStartIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: Prefs.startOnPlugIn), !capture.running, setup.complete,
+              let serial = UserDefaults.standard.string(forKey: Prefs.serial), serial != autoStartBlocked,
+              let device = devices.first(where: { $0.serial == serial && $0.authorized }) else { return }
+        autoStartBlocked = serial
+        startCapture(device)
+    }
+
+    private func lensList(_ serial: String) -> [CameraLens] {
+        if let list = lenses[serial] { return list }
+        let data = UserDefaults.standard.data(forKey: Prefs.lenses(serial))
+        let list = data.flatMap { try? JSONDecoder().decode([CameraLens].self, from: $0) } ?? []
+        lenses[serial] = list
+        return list
+    }
+
+    /// Lists the phone's lenses once per plug-in, off main, and keeps the last good list.
+    private func queryLenses(_ serial: String) {
+        guard !lensQueries.contains(serial) else { return }
+        lensQueries.insert(serial)
+        let capture = capture
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = Result { try capture.cameras(serial: serial) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case let .success(list) where !list.isEmpty:
+                    self.lenses[serial] = list
+                    if let data = try? JSONEncoder().encode(list) { UserDefaults.standard.set(data, forKey: Prefs.lenses(serial)) }
+                case .success: break
+                case let .failure(error): fputs("Could not list the phone's cameras. \(error.localizedDescription)\n", stderr)
+                }
+                self.refreshUI()
+            }
         }
-        if devices.isEmpty { phoneMenu.addItem(NSMenuItem(title: "No USB phone connected", action: nil, keyEquivalent: "")) }
-        for item in modeMenu.items { item.state = item.tag == modeIndex ? .on : .off; item.isEnabled = !capture.running }
+    }
+
+    // MARK: Capture
+
+    private func startCapture(_ device: AndroidDevice, quiet: Bool = false) {
+        guard !capture.running else { return }
+        let saved = UserDefaults.standard.string(forKey: Prefs.lensID)
+        runLensID = lensList(device.serial).contains { $0.id == saved } ? saved : nil
+        runDevice = device
+        runModeIndex = modeIndex
+        live = false; liveSince = nil; stats = nil; torchOn = false
+        switchingLens = false; stopRequested = false; cableLoose = false
+        quietRestart = quiet
+        note = nil
+        UserDefaults.standard.set(device.serial, forKey: Prefs.serial)
+        capture.macSharpness = Float(imageStore.macSharpness)
+        capture.start(device: device, mode: CaptureMode.all[modeIndex], lensID: runLensID, image: imageStore.phone)
+        refreshUI()
+    }
+
+    /// onStatus: the header tells the running states itself, so only the final status matters here.
+    private func captureStatus(_ message: String) {
+        guard !capture.running, let device = runDevice else { refreshUI(); return }
+        let userStopped = stopRequested, quiet = quietRestart
+        runDevice = nil
+        live = false; liveSince = nil; stats = nil; torchOn = false
+        switchingLens = false; stopRequested = false; quietRestart = false; cableLoose = false
+        autoStartBlocked = device.serial
+        endSyncTest(reason: "The webcam stopped.")
+        header.clearPicture()
+        if !userStopped && !quiet {
+            note = message
+            notify("Webcam stopped", message)
+        }
+        refreshUI()
+    }
+
+    private func captureLive(_ isLive: Bool) {
+        guard capture.running, runDevice != nil else { return }
+        if isLive {
+            if cableLoose {
+                notify("Phone reconnected", "The webcam is live again.")
+            } else if liveSince == nil && !quietRestart {
+                notify("Webcam is live", "Pick OBS Virtual Camera in your call app.")
+            }
+            live = true
+            liveSince = liveSince ?? Date()
+            cableLoose = false; switchingLens = false; quietRestart = false
+        } else {
+            live = false
+            torchOn = false
+            endSyncTest(reason: "The picture stopped.")
+            // capture also reports false when it ends, just before its final status, so wait a moment before calling it a loose cable.
+            if !switchingLens, !stopRequested, !quietRestart, liveSince != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let self, self.capture.running, self.liveSince != nil, !self.live, !self.cableLoose,
+                          !self.switchingLens, !self.stopRequested, !self.quietRestart else { return }
+                    self.cableLoose = true
+                    self.notify("Phone disconnected", "Plug it back in. Your call keeps the camera and picks up again on its own.")
+                    self.refreshUI()
+                }
+            }
+        }
+        refreshUI()
+    }
+
+    private func phoneStats(_ newStats: PhoneStats) {
+        guard capture.running else { return }
+        let wasHot = stats?.isHot ?? false
+        stats = newStats
+        if newStats.isHot && !wasHot {
+            let advice = runModeIndex == Self.coolModeIndex
+                ? "Take it out of its case or stop the webcam for a while."
+                : "Switching to 1080p · 30 keeps it cooler. Open the menu to switch."
+            notify(String(format: "Phone at %.0f °C", newStats.temperatureC), advice)
+        }
+        refreshUI()
+    }
+
+    @objc private func mainActionChosen() {
+        if capture.running {
+            stopRequested = true
+            capture.stop()
+            refreshUI()
+            return
+        }
+        guard setup.complete else { showSetup(); return }
+        guard let device = devices.first(where: { $0.serial == selectedSerial && $0.authorized }) else { return }
+        if !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty {
+            note = "Quit OBS before starting this camera."
+            updateSetup()
+            refreshUI()
+            return
+        }
+        startCapture(device)
+    }
+
+    @objc private func switchToCoolMode() {
+        modeIndex = Self.coolModeIndex
+        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
+        guard capture.running, let device = runDevice else { refreshUI(); return }
+        quietRestart = true
+        capture.stop { [weak self] in self?.startCapture(device, quiet: true) }
+        refreshUI()
     }
 
     @objc private func selectPhone(_ sender: NSMenuItem) {
         selectedSerial = devices[sender.tag].serial
-        UserDefaults.standard.set(selectedSerial, forKey: Self.serialKey)
-        updateControls()
+        UserDefaults.standard.set(selectedSerial, forKey: Prefs.serial)
+        refreshUI()
     }
 
     @objc private func selectMode(_ sender: NSMenuItem) {
         modeIndex = sender.tag
-        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Self.modeKey)
-        updateControls()
+        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
+        refreshUI()
     }
 
-    @objc private func toggleCapture() {
-        if capture.running { capture.stop(); status.title = "Stopping webcam..."; return }
-        guard let device = devices.first(where: { $0.serial == selectedSerial && $0.authorized }) else { return }
-        if !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty {
-            status.title = "Quit OBS before starting this camera sender"
-            return
-        }
-        capture.start(device: device, mode: CaptureMode.all[modeIndex])
-        updateControls()
+    @objc private func selectLens(_ sender: NSMenuItem) {
+        guard let device = runDevice else { return }
+        let list = lensList(device.serial)
+        let lens = list[sender.tag]
+        UserDefaults.standard.set(lens.id, forKey: Prefs.lensID)
+        guard lens.id != (runLensID ?? "0") else { return }
+        runLensID = lens.id
+        switchingLens = true
+        capture.switchLens(lens.id)
+        refreshUI()
+    }
+
+    @objc private func zoomInChosen() { capture.zoomIn() }
+    @objc private func zoomOutChosen() { capture.zoomOut() }
+
+    @objc private func toggleFlashlight() {
+        torchOn.toggle()
+        capture.setTorch(torchOn)
+        refreshUI()
     }
 
     @objc private func applicationLaunched(_ notification: Notification) {
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-        guard capture.running, app?.bundleIdentifier == Self.obsBundleID else { return }
-        status.title = "OBS opened. Don't start its virtual camera while this one runs."
+        guard app?.bundleIdentifier == Self.obsBundleID else { return }
+        if capture.running { note = "OBS opened. Don't start its virtual camera while this one runs." }
+        updateSetup()
+        refreshUI()
+    }
+
+    @objc private func applicationQuit(_ notification: Notification) {
+        let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        guard app?.bundleIdentifier == Self.obsBundleID else { return }
+        if !capture.running, note == "Quit OBS before starting this camera." { note = nil }
+        updateSetup()
+        refreshUI()
+    }
+
+    // MARK: Windows
+
+    private func showSetup() {
+        updateSetup()
+        shelf.show("setup", title: "Set Up \(appName)") { SetupView(model: setup) }
+    }
+
+    @objc private func showImageSettings() {
+        shelf.show("image", title: "Image Settings") { ImageSettingsView(store: imageStore) }
+    }
+
+    @objc private func showSettings() {
+        shelf.show("settings", title: "\(appName) Settings") {
+            SettingsView(onNotificationsChange: { [weak self] on in if on { self?.requestNotificationPermission() } })
+        }
+    }
+
+    @objc private func showSyncCheck() {
+        syncModel.live = live
+        shelf.show("sync", title: "Check Audio Sync", onClose: { [weak self] in
+            self?.endSyncTest(reason: nil)
+            self?.syncModel.phase = .idle
+        }) { SyncCheckView(model: syncModel) }
+    }
+
+    private func beginSyncTest() {
+        guard live else { return }
+        endSyncTest(reason: nil)
+        let test = SyncTest()
+        let id = ObjectIdentifier(test)
+        frameLock.lock()
+        syncTest = test
+        frameLock.unlock()
+        syncModel.phase = .listening
+        test.start { [weak self] result in
+            guard let self else { return }
+            self.frameLock.lock()
+            let current = self.syncTest.map { ObjectIdentifier($0) } == id
+            if current { self.syncTest = nil }
+            self.frameLock.unlock()
+            guard current else { return }
+            switch result {
+            case let .success(measured): self.syncModel.phase = .result(SyncCheckView.describe(measured.videoLagMs))
+            case let .failure(error): self.syncModel.phase = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Cancels a running sync test. reason, when given, is shown in its window.
+    private func endSyncTest(reason: String?) {
+        frameLock.lock()
+        let test = syncTest
+        syncTest = nil
+        frameLock.unlock()
+        guard let test else { return }
+        test.cancel()
+        syncModel.phase = reason.map { .failed($0) } ?? .idle
     }
 
     @objc private func togglePreview() {
@@ -192,7 +669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let view = PreviewView(frame: NSRect(x: 0, y: 0, width: 960, height: 540))
         let previewWindow = NSWindow(contentRect: view.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                      backing: .buffered, defer: false)
-        previewWindow.title = "Android Webcam Preview"
+        previewWindow.title = "\(appName) Preview"
         previewWindow.contentView = view
         previewWindow.isReleasedWhenClosed = false
         previewWindow.delegate = self
@@ -201,41 +678,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         setPreviewOpen(true)
         previewWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        updateControls()
+        refreshUI()
     }
 
     func windowWillClose(_ notification: Notification) {
         setPreviewOpen(false)
         window = nil
-        updateControls()
+        refreshUI()
     }
 
     private func setPreviewOpen(_ open: Bool) {
-        previewLock.lock()
+        frameLock.lock()
         previewOpen = open
         pendingFrame = nil
-        previewLock.unlock()
+        frameLock.unlock()
     }
 
-    /// Called on the capture thread. Keeps only the newest frame and schedules one main-queue hop for it;
-    /// frames that arrive before main runs replace it instead of queueing more work.
-    private func queuePreview(_ frame: CVPixelBuffer) {
-        previewLock.lock()
-        guard previewOpen else { previewLock.unlock(); return }
-        let hopNeeded = pendingFrame == nil
-        pendingFrame = frame
-        previewLock.unlock()
-        if hopNeeded { DispatchQueue.main.async { [weak self] in self?.showPendingFrame() } }
+    // MARK: Frames
+
+    /// Called on the capture thread. Keeps only the newest frame for the preview and, at about 10 fps while
+    /// the menu is open, for the header; frames that arrive before main runs replace it instead of queueing more work.
+    private func tap(_ frame: CVPixelBuffer) {
+        let now = mach_absolute_time()
+        frameLock.lock()
+        let test = syncTest
+        var previewHop = false, headerHop = false
+        if previewOpen {
+            previewHop = pendingFrame == nil
+            pendingFrame = frame
+        }
+        if headerOpen, now &- headerShownAt >= headerInterval {
+            headerShownAt = now
+            headerHop = headerFrame == nil
+            headerFrame = frame
+        }
+        frameLock.unlock()
+        test?.addFrame(frame, hostTime: now)
+        if previewHop { DispatchQueue.main.async { [weak self] in self?.showPendingFrame() } }
+        if headerHop { DispatchQueue.main.async { [weak self] in self?.showHeaderFrame() } }
     }
 
     private func showPendingFrame() {
-        previewLock.lock()
+        frameLock.lock()
         let frame = pendingFrame
         pendingFrame = nil
-        previewLock.unlock()
+        frameLock.unlock()
         guard let frame, let view = window?.contentView as? PreviewView else { return }
         do { try view.show(frame) }
-        catch { status.title = "Preview failed. \(error.localizedDescription)" }
+        catch { note = "Preview failed. \(error.localizedDescription)"; refreshUI() }
+    }
+
+    private func showHeaderFrame() {
+        frameLock.lock()
+        let frame = headerFrame
+        headerFrame = nil
+        frameLock.unlock()
+        guard let frame, live else { return }
+        header.show(frame)
+    }
+
+    // MARK: Notifications
+
+    /// UNUserNotificationCenter needs a bundled app; a bare `swift run` binary skips notifications.
+    private var canNotify: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+
+    private func requestNotificationPermission() {
+        guard canNotify else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, error in
+            if let error { fputs("Notification permission failed. \(error.localizedDescription)\n", stderr) }
+        }
+    }
+
+    private func notify(_ title: String, _ body: String) {
+        guard canNotify, UserDefaults.standard.bool(forKey: Prefs.notifications) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { fputs("Notification failed. \(error.localizedDescription)\n", stderr) }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list])
     }
 
     @objc private func quitApp() {
