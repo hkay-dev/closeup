@@ -9,14 +9,14 @@ enum SyncTestError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .microphoneDenied: return "Microphone access is off. Allow it in System Settings > Privacy & Security > Microphone."
+        case .microphoneDenied: return "Microphone access is off for \(appName). Turn it on in Microphone settings, then test again."
         case .noClapHeard: return "No clap was heard. Clap once, sharply, near the microphone."
         case .noMotionSeen: return "The clap wasn't seen. Keep the webcam live and clap in the middle of the picture."
         }
     }
 }
 
-/// Clap test (zt1n): records the default mic and the webcam frames for `duration`, finds the clap in each,
+/// Clap test (zt1n): records the default mic and the webcam frames, finds the clap in each,
 /// and reports how much later the video arrives than the sound. Call start and cancel on main.
 final class SyncTest {
     private struct Sample { let hostTime: UInt64; let value: Float }
@@ -30,10 +30,27 @@ final class SyncTest {
     private static let clapRise: Float = 31.6
     private static let clapHistoryHops = 40
 
+    /// What the window shows while the test listens.
+    struct Meter: Equatable {
+        var level: Float = 0        // 0 (-60 dBFS or quieter) to 1 (full scale), loudest hop of the last 100 ms
+        var progress: Double = 0    // share of the listening time used
+        var heard = false           // the clap was heard; the test is waiting for the video around it
+    }
+
+    /// The microphone the test listens to, as macOS names it.
+    static var microphoneName: String? { AVCaptureDevice.default(for: .audio)?.localizedName }
+
+    /// Called on main about 20 times a second while recording.
+    var onMeter: ((Meter) -> Void)?
+
+    /// The longest it listens for the clap.
     private let duration: TimeInterval
+    /// Video after the clap that motionPeak looks at, plus a little for the last frames to arrive.
+    private static let afterClap = 1.6
     private let lock = NSLock()
     private var engine: AVAudioEngine?
-    private var finishWork: DispatchWorkItem?
+    private var meterTimer: Timer?
+    private var completion: ((Result<SyncTestResult, Error>) -> Void)?
     private var generation = 0
     // Guarded by lock.
     private var recording = false
@@ -42,10 +59,12 @@ final class SyncTest {
     private var motion: [Sample] = []     // mean absolute luma difference from the previous frame
     private var grid = [UInt8](repeating: 0, count: SyncTest.gridColumns * SyncTest.gridRows)
     private var gridWidth = 0, gridHeight = 0
+    private var clap: UInt64?             // when the clap reached the mic, once heard
 
-    init(duration: TimeInterval = 6) { self.duration = duration }
+    init(duration: TimeInterval = 8) { self.duration = duration }
 
-    /// Records the default mic for `duration`. Completion on main; cancel() ends the test without calling it.
+    /// Listens until the clap and the video after it are in, or `duration` passes. Completion on main;
+    /// cancel() ends the test without calling it.
     func start(completion: @escaping (Result<SyncTestResult, Error>) -> Void) {
         cancel()
         let generation = self.generation
@@ -91,11 +110,12 @@ final class SyncTest {
     }
 
     func cancel() {
-        finishWork?.cancel()
-        finishWork = nil
+        meterTimer?.invalidate()
+        meterTimer = nil
+        completion = nil
         generation += 1
         stopEngine()
-        lock.lock(); recording = false; sound = []; motion = []; lock.unlock()
+        lock.lock(); recording = false; sound = []; motion = []; clap = nil; lock.unlock()
     }
 
     private func record(_ generation: Int, _ completion: @escaping (Result<SyncTestResult, Error>) -> Void) {
@@ -112,9 +132,9 @@ final class SyncTest {
         // Buffer times are when the IO cycle ran; the sound reached the mic one input latency earlier.
         let latency = AVAudioTime.hostTime(forSeconds: max(0, input.presentationLatency))
         lock.lock()
-        sound = []; motion = []; gridWidth = 0; gridHeight = 0
+        sound = []; motion = []; gridWidth = 0; gridHeight = 0; clap = nil
         sound.reserveCapacity(Int(duration / Self.hopSeconds) + 1000)
-        motion.reserveCapacity(Int(duration * 120))
+        motion.reserveCapacity(Int((duration + Self.afterClap) * 120))
         lock.unlock()
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, when in
             self?.addAudio(buffer, when: when, hop: hop, sampleRate: sampleRate, latency: latency)
@@ -127,10 +147,39 @@ final class SyncTest {
             return
         }
         self.engine = engine
+        self.completion = completion
         lock.lock(); recording = true; startTime = mach_absolute_time(); lock.unlock()
-        let work = DispatchWorkItem { self.finish(completion) }
-        finishWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(timer, forMode: .common)
+        meterTimer = timer
+    }
+
+    /// Updates the meter, looks for the clap, and ends the test once the video after the clap is in.
+    private func tick() {
+        let now = mach_absolute_time()
+        lock.lock()
+        // Audio arrives in IO buffers stamped a buffer and an input latency back, so look further than one tick.
+        let window = AVAudioTime.hostTime(forSeconds: 0.1)
+        var peak: Float = 0
+        for sample in sound.reversed() {
+            guard sample.hostTime &+ window >= now else { break }
+            peak = max(peak, sample.value)
+        }
+        if clap == nil {
+            // Skip the first 200 ms, where starting the mic can click.
+            clap = Self.soundOnset(sound, after: startTime &+ AVAudioTime.hostTime(forSeconds: 0.2))
+        }
+        let heard = clap, start = startTime
+        lock.unlock()
+        let elapsed = AVAudioTime.seconds(forHostTime: now &- start)
+        let decibels = peak > 0 ? 10 * log10(peak) : -60
+        onMeter?(Meter(level: max(0, min(1, (decibels + 60) / 60)),
+                       progress: min(1, elapsed / duration), heard: heard != nil))
+        if let heard {
+            if now >= heard &+ AVAudioTime.hostTime(forSeconds: Self.afterClap) { finish() }
+        } else if elapsed >= duration {
+            finish()
+        }
     }
 
     private func addAudio(_ buffer: AVAudioPCMBuffer, when: AVAudioTime, hop: Int, sampleRate: Double, latency: UInt64) {
@@ -157,16 +206,19 @@ final class SyncTest {
         self.engine = nil
     }
 
-    private func finish(_ completion: (Result<SyncTestResult, Error>) -> Void) {
-        finishWork = nil
+    private func finish() {
+        meterTimer?.invalidate()
+        meterTimer = nil
         stopEngine()
+        guard let completion else { return }
+        self.completion = nil
         lock.lock()
         recording = false
-        let sound = self.sound, motion = self.motion, start = startTime
-        self.sound = []; self.motion = []
+        let sound = self.sound, motion = self.motion, start = startTime, heard = clap
+        self.sound = []; self.motion = []; clap = nil
         lock.unlock()
         // Skip the first 200 ms, where starting the mic can click.
-        guard let clap = Self.soundOnset(sound, after: start &+ AVAudioTime.hostTime(forSeconds: 0.2)) else {
+        guard let clap = heard ?? Self.soundOnset(sound, after: start &+ AVAudioTime.hostTime(forSeconds: 0.2)) else {
             completion(.failure(SyncTestError.noClapHeard))
             return
         }

@@ -30,6 +30,8 @@ The app sends video only. It does not record footage, capture the desktop, or tr
 
 The menu shows a live thumbnail, the status, and the phone's temperature and battery while capturing. Below that sit the main action (Finish Setup, Start or Stop), a cool-down shortcut when the phone runs hot, then Phone, Capture Mode and Camera (lens, zoom, flashlight) submenus. **Image Settings** sets exposure, white balance, focus, noise reduction and sharpness on the phone, plus extra sharpening on the Mac. Notifications cover start, errors, heat and a loose cable. Each kind keeps one notification, so Phone reconnected replaces Phone disconnected. Clicking one opens the menu, and the heat warning has a button that switches to 1080p at 30 fps. The app asks for notification permission the first time the webcam starts.
 
+**Check Audio Sync** measures how far the video lags behind the sound. You clap once in front of the phone, and the window shows the microphone that it listens to, a level meter while it listens, and the lag as a number of milliseconds to enter in your call or recording app. It listens for up to 8 seconds and stops about 1.6 seconds after it hears the clap. If the webcam isn't live, the window can start it.
+
 ## Data flow
 
 ADB starts this project's build of scrcpy-server 5.0.1 on the selected USB phone. A local ADB forwarding socket carries framed HEVC packets, and a second socket carries camera controls. VideoToolbox decodes the video to NV12 pixel buffers, an optional Core Image step sharpens them, and CoreMediaIO sends them directly to the OBS extension's sink stream. An optional preview displays the same frames.

@@ -373,43 +373,92 @@ struct SettingsView: View {
 // MARK: Audio sync check
 
 final class SyncCheckModel: ObservableObject {
-    enum Phase: Equatable { case idle, listening, result(String), failed(String) }
+    enum Phase: Equatable {
+        case idle, listening, result(lagMs: Double)
+        case failed(String, microphoneSettings: Bool = false)
+    }
     @Published var phase = Phase.idle
     @Published var live = false
+    @Published var starting = false
+    @Published var meter = SyncTest.Meter()
+    @Published var microphone: String?
     var begin: () -> Void = {}
+    var startWebcam: () -> Void = {}
 }
 
 struct SyncCheckView: View {
     @ObservedObject var model: SyncCheckModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Measures how far the video lags behind the sound on this Mac.")
             Text("Clap once, in the middle of the picture, with the webcam live.")
-                .fontWeight(.semibold)
-            Text("Press Start, then clap where the Mac's microphone can hear it. The test listens to the default microphone for 6 seconds. Nothing is saved.")
+                .fontWeight(.semibold).fixedSize(horizontal: false, vertical: true)
+            Text("This measures how far the video lags behind the sound on this Mac. Press Start and clap where the microphone can hear it. It listens for up to 8 seconds and stops once it has the clap. Nothing is saved.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            switch model.phase {
-            case .idle: EmptyView()
-            case .listening:
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Listening. Clap once.") }
-            case let .result(text):
-                Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "checkmark.circle") }
-            case let .failed(text):
-                Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "exclamationmark.triangle") }
-            }
-            if !model.live {
-                Text("Start the webcam first.").font(.callout).foregroundStyle(.secondary)
-            }
+            Label(model.microphone ?? "No microphone found", systemImage: model.microphone == nil ? "mic.slash" : "mic")
+                .font(.callout).foregroundStyle(.secondary)
+                .accessibilityLabel(model.microphone.map { "Microphone: \($0)" } ?? "No microphone found")
+            phaseView
+                .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.phase)
             HStack {
+                if model.starting {
+                    ProgressView().controlSize(.small)
+                    Text("Starting the webcam").font(.callout).foregroundStyle(.secondary)
+                } else if !model.live {
+                    Text("The webcam isn't live.").font(.callout).foregroundStyle(.secondary)
+                    Button("Start Webcam") { model.startWebcam() }
+                }
                 Spacer()
                 Button(startTitle) { model.begin() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!model.live || model.phase == .listening)
+                    .disabled(!model.live || model.phase == .listening || model.microphone == nil)
             }
         }
         .padding(20)
         .frame(width: 420)
+    }
+
+    @ViewBuilder private var phaseView: some View {
+        switch model.phase {
+        case .idle:
+            // Holds the space, so the window keeps its size from one step to the next.
+            Color.clear.frame(height: 0)
+        case .listening:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    LevelMeter(level: model.meter.level)
+                    Text(model.meter.heard ? "Heard the clap. Matching it to the picture." : "Listening. Clap once.")
+                        .font(.callout)
+                }
+                ProgressView(value: model.meter.heard ? 1 : model.meter.progress)
+                    .progressViewStyle(.linear)
+                    .animation(reduceMotion ? nil : .linear(duration: 0.05), value: model.meter.progress)
+            }
+            .accessibilityElement(children: .combine)
+        case let .result(lagMs):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.headline(lagMs))
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text(Self.advice(lagMs))
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+        case let .failed(text, microphoneSettings):
+            VStack(alignment: .leading, spacing: 8) {
+                Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+                if microphoneSettings {
+                    Button("Open Microphone Settings") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                    }
+                }
+            }
+        }
     }
 
     private var startTitle: String {
@@ -419,13 +468,35 @@ struct SyncCheckView: View {
         }
     }
 
-    /// Plain words for a measured lag. Positive means the video reaches the Mac after the sound.
-    static func describe(_ lagMs: Double) -> String {
+    /// The number to act on. Positive lag means the video reaches the Mac after the sound.
+    static func headline(_ lagMs: Double) -> String {
         let ms = Int(abs(lagMs).rounded())
-        if ms < 20 { return "Sound and picture are in sync (\(ms) ms apart)." }
-        if lagMs > 0 {
-            return "The video reaches the Mac \(ms) ms after the sound. To line them up, delay the audio by \(ms) ms in your recording or call app."
+        if ms < 20 { return "In sync" }
+        return lagMs > 0 ? "Video \(ms) ms behind" : "Sound \(ms) ms behind"
+    }
+
+    static func advice(_ lagMs: Double) -> String {
+        let ms = Int(abs(lagMs).rounded())
+        if ms < 20 { return "Sound and picture are \(ms) ms apart, too little to notice." }
+        if lagMs > 0 { return "To line them up, delay the audio by \(ms) ms in your call or recording app." }
+        return "To line them up, delay the video by \(ms) ms in your recording app."
+    }
+}
+
+/// A short bar that follows the microphone level.
+private struct LevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(Color.green)
+                    .frame(width: max(4, geometry.size.width * CGFloat(level)))
+            }
         }
-        return "The sound reaches the Mac \(ms) ms after the video. To line them up, delay the video by \(ms) ms in your recording app."
+        .frame(width: 72, height: 6)
+        .animation(.linear(duration: 0.05), value: level)
+        .accessibilityHidden(true)
     }
 }

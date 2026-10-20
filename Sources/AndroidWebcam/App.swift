@@ -139,6 +139,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.capture.macSharpness = Float(self.imageStore.macSharpness)
         }
         syncModel.begin = { [weak self] in self?.beginSyncTest() }
+        syncModel.startWebcam = { [weak self] in
+            guard let self, !self.capture.running else { return }
+            self.mainActionChosen()
+        }
         setup.start = { [weak self] in
             guard let self else { return }
             if !self.capture.running { self.mainActionChosen() }
@@ -257,8 +261,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         cameraItem.isEnabled = live && !switchingLens
         rebuildCameraMenu()
         flashlight.state = torchOn ? .on : .off
-        syncItem.isEnabled = live
+        // The window can start the webcam itself, so it opens whether or not the webcam is live.
         if syncModel.live != live { syncModel.live = live }
+        let starting = running && !live && !cableLoose
+        if syncModel.starting != starting { syncModel.starting = starting }
         preview.state = window?.isVisible == true ? .on : .off
     }
 
@@ -693,6 +699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func showSyncCheck() {
         syncModel.live = live
+        syncModel.microphone = SyncTest.microphoneName
         shelf.show("sync", title: "Check Audio Sync", onClose: { [weak self] in
             self?.endSyncTest(reason: nil)
             self?.syncModel.phase = .idle
@@ -702,12 +709,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func beginSyncTest() {
         guard live else { return }
         endSyncTest(reason: nil)
+        syncModel.microphone = SyncTest.microphoneName
         let test = SyncTest()
         let id = ObjectIdentifier(test)
         frameLock.lock()
         syncTest = test
         frameLock.unlock()
+        syncModel.meter = .init()
         syncModel.phase = .listening
+        test.onMeter = { [weak self] in self?.syncModel.meter = $0 }
         test.start { [weak self] result in
             guard let self else { return }
             self.frameLock.lock()
@@ -716,8 +726,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.frameLock.unlock()
             guard current else { return }
             switch result {
-            case let .success(measured): self.syncModel.phase = .result(SyncCheckView.describe(measured.videoLagMs))
-            case let .failure(error): self.syncModel.phase = .failed(error.localizedDescription)
+            case let .success(measured): self.syncModel.phase = .result(lagMs: measured.videoLagMs)
+            case let .failure(error):
+                let microphoneOff = (error as? SyncTestError) == .microphoneDenied
+                self.syncModel.phase = .failed(error.localizedDescription, microphoneSettings: microphoneOff)
             }
         }
     }
