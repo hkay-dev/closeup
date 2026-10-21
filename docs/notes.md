@@ -35,4 +35,10 @@ Other tools on this Mac use the same ADB server. Stop and Quit remove only the a
 
 ## Watching the OBS extension lookups
 
-Every CoreMediaIO device lookup for the OBS extension logs one line with a running count. Count them with `log stream --level info --predicate 'subsystem == "com.harsha.android-webcam" AND category == "obs-lookup"'`. Idle with adb found, the extension active and Setup closed, expect only the launch lookup; the 3 s timer must add none (kata:android-webcam#da0t).
+Every CoreMediaIO device lookup for the OBS extension logs one line with a running count, and so does each `systemextensionsctl list` check (it shares the counter). Count them with `log stream --level info --predicate 'subsystem == "com.harsha.android-webcam" AND category == "obs-lookup"'`. Idle with adb found, the extension active and Setup closed, expect only the launch lookup; the 3 s timer must add none (kata:android-webcam#da0t). While the extension is missing, each 3 s tick logs a lookup followed by a system extension check.
+
+## A running process never sees an OBS extension approved after it started
+
+CoreMediaIO builds a process's device list at its first lookup. A camera extension approved later never shows up in that process, while a fresh process (`--diagnose`) sees it within seconds. Seen in a macOS 27.0.1 VM with OBS installed and the extension not yet approved: plain re-lookups on any thread, `kCMIOHardwarePropertyDeviceForUID`, an AVFoundation discovery session (new each time and kept with KVO), a property listener on the device list, setting the DAL run loop property (`'rnlp'`) to NULL or the main loop, allowing the DAL to unload, and waiting 100 s all stayed stale for minutes after approval. `CMIOHardwareUnload` leaves the list empty for the rest of the process.
+
+So `VirtualCamera.extensionState()` checks a miss against `systemextensionsctl list` (`[activated enabled]` for `com.obsproject.obs-studio.mac-camera-extension`), and when macOS has the extension on but this process can't see it, the app opens a fresh copy of itself and quits, once per lineage (`ANDROID_WEBCAM_RELAUNCHED`). Start Webcam needs the device in the same process, so showing the step done without relaunching would only move the failure to Start (kata:android-webcam#yt4m).

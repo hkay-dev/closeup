@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var adbPath: String?
     private var discoveryError: String?
     private var extensionActive = false
+    private var relaunching = false
     private var modeIndex = AppDelegate.coolModeIndex
     private let watcher = DeviceWatcher()
     private var devicesKnown = false
@@ -414,11 +415,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// so Start Webcam would fail too: open a fresh copy and quit. Once per lineage, so a device macOS never shows can't loop.
     private func relaunchForExtension() {
         let key = "ANDROID_WEBCAM_RELAUNCHED"
-        guard !capture.running, ProcessInfo.processInfo.environment[key] == nil,
+        guard !capture.running, !relaunching, ProcessInfo.processInfo.environment[key] == nil,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
+        // Set once and never reset: the 3 s timer and the menu re-enter refreshEnvironment while the launch is pending,
+        // and a launch error must not retry every 3 s.
+        relaunching = true
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
-        configuration.environment = [key: "1"]
+        configuration.environment = ProcessInfo.processInfo.environment.merging([key: "1"]) { $1 }
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
             guard error == nil else { return }
             DispatchQueue.main.async { NSApp.terminate(nil) }
