@@ -701,7 +701,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func applicationQuit(_ notification: Notification) {
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         guard app?.bundleIdentifier == Self.obsBundleID else { return }
-        if !capture.running, note == "Quit OBS before starting this camera." { note = nil }
+        if note == "OBS opened. Don't start its virtual camera while this one runs."
+            || (!capture.running && note == "Quit OBS before starting this camera.") { note = nil }
         updateSetup()
         refreshUI()
     }
