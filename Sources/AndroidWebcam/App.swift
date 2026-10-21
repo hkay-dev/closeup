@@ -397,15 +397,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         environmentCheckInProgress = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let adb = try? ADB.executable().path
-            let extensionActive = (try? VirtualCamera.findDevice()) != nil
+            let extensionState = VirtualCamera.extensionState()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.environmentCheckInProgress = false
                 self.environmentKnown = true
                 self.adbPath = adb
-                self.extensionActive = extensionActive
+                self.extensionActive = extensionState == .ready
                 self.setupChanged()
+                if extensionState == .staleInThisProcess { self.relaunchForExtension() }
             }
+        }
+    }
+
+    /// This process's CoreMediaIO list predates the approved extension and never updates (see VirtualCamera.extensionState),
+    /// so Start Webcam would fail too: open a fresh copy and quit. Once per lineage, so a device macOS never shows can't loop.
+    private func relaunchForExtension() {
+        let key = "ANDROID_WEBCAM_RELAUNCHED"
+        guard !capture.running, ProcessInfo.processInfo.environment[key] == nil,
+              Bundle.main.bundleURL.pathExtension == "app" else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.environment = [key: "1"]
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+            guard error == nil else { return }
+            DispatchQueue.main.async { NSApp.terminate(nil) }
         }
     }
 

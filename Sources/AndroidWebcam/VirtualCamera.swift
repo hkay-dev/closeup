@@ -47,6 +47,40 @@ final class VirtualCamera {
         throw WebcamError(message: "OBS's camera extension isn't installed or approved. Open Setup from the menu to finish it.")
     }
 
+    static let obsExtensionBundleID = "com.obsproject.obs-studio.mac-camera-extension"
+
+    enum ExtensionState {
+        case missing
+        case ready
+        /// macOS has the extension on, but this process's CoreMediaIO device list was built before that and never updates.
+        case staleInThisProcess
+    }
+
+    /// CoreMediaIO builds a process's device list when the process first asks, and a camera extension approved later
+    /// never reaches it: not through a fresh lookup, an AVFoundation discovery session, a property listener, the
+    /// DAL run loop property, nor waiting; CMIOHardwareUnload kills the list for good. Only a new process sees the
+    /// device, so a miss is checked against what macOS says about the extension.
+    static func extensionState() -> ExtensionState {
+        if (try? findDevice()) != nil { return .ready }
+        return systemExtensionEnabled() ? .staleInThisProcess : .missing
+    }
+
+    private static func systemExtensionEnabled() -> Bool {
+        let count = lookups.withLock { n -> Int in n += 1; return n }
+        lookupLog.info("System extension check (lookup #\(count))")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/systemextensionsctl")
+        process.arguments = ["list"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return false }
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: output, as: UTF8.self).split(separator: "\n")
+            .contains { $0.contains(obsExtensionBundleID) && $0.contains("[activated enabled]") }
+    }
+
     init(fps: Int32) throws {
         sampler = FrameSampler(fps: fps)
         device = try Self.findDevice()
