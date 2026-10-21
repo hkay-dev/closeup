@@ -23,6 +23,8 @@ adb-R5CY11B8DHD-KmFSaA (2)._adb-tls-connect._tcp device product:pa3quew model:SM
 
 The app skips those lines, so with only a wireless phone attached the menu says "No USB Android phone connected" and `--diagnose` prints `"usb_devices" : []`. Plug the phone in over USB (kata:android-webcam#0hz3).
 
+A hidden switch lets wireless phones through for the latency session and logs packet timing while capturing; it is off by default and the app stays USB only. See [wireless-latency-session.md](wireless-latency-session.md) (kata:android-webcam#wnmp).
+
 ## Never stop the shared ADB server
 
 Other tools on this Mac use the same ADB server. Stop and Quit remove only the app's own forward entry, pushed jar and child process. Don't run `adb kill-server` or `adb forward --remove-all` to clean up after the app.

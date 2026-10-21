@@ -66,7 +66,7 @@ These modes do not create the menu bar item, open a preview, start the phone cam
 'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' --probe-hevc path/to/sample.hevc
 ```
 
-`--diagnose` checks USB device discovery, bundled server presence, and the OBS extension's device identity. `--probe-hevc` checks the hardware decoder using a supplied Annex B HEVC sample with access-unit delimiters. Probe frames are discarded.
+`--diagnose` checks USB device discovery, bundled server presence, and the OBS extension's device identity. It also reports the hidden wireless switch and any wireless phones adb lists; the app stays USB only unless that switch is on (see [docs/wireless-latency-session.md](docs/wireless-latency-session.md)). `--probe-hevc` checks the hardware decoder using a supplied Annex B HEVC sample with access-unit delimiters. Probe frames are discarded.
 
 ## Checks on this Mac
 
