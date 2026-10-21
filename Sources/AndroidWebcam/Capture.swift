@@ -156,7 +156,8 @@ enum ADB {
                                    model: value("model:").map { $0.replacingOccurrences(of: "_", with: " ") } ?? serial)
         device.wireless = isWireless
         device.hardwareSerial = isWireless ? mdnsHardwareSerial(serial) : serial
-        device.fingerprint = ["product:", "model:", "device:"].map { value($0) ?? "" }.joined(separator: "|")
+        let identity = ["product:", "model:", "device:"].map { value($0) ?? "" }
+        device.fingerprint = identity.allSatisfy(\.isEmpty) ? "" : identity.joined(separator: "|")
         return device
     }
 
