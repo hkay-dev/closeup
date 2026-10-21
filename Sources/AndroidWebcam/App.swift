@@ -188,6 +188,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         watcher.stop()
     }
 
+    // Opening the running app again (Finder, Spotlight, Raycast) is the way in when the status item
+    // is behind the notch or the menu bar is hidden: open the menu if the icon is reachable, else Settings.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if statusButtonReachable() {
+            statusItem.button?.performClick(nil)
+        } else {
+            showSettings()
+        }
+        return false
+    }
+
+    private func statusButtonReachable() -> Bool {
+        guard let button = statusItem.button, let window = button.window, window.isVisible,
+              window.occlusionState.contains(.visible) else { return false }
+        let frame = window.frame
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
+              screen.frame.contains(frame) else { return false }
+        // A notch leaves two usable strips of menu bar; the icon must sit in one of them.
+        if screen.safeAreaInsets.top > 0,
+           let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            let x = frame.midX - screen.frame.minX
+            return x <= left.maxX || x >= right.minX
+        }
+        return true
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard capture.running else { return .terminateNow }
         stopRequested = true; restarting = false
