@@ -2,6 +2,7 @@ import Foundation
 import CoreMedia
 import CoreMediaIO
 import CoreVideo
+import os
 
 final class VirtualCamera {
     static let obsUID = "7626645E-4425-469E-9D8B-97E0FA59AC75"
@@ -28,7 +29,13 @@ final class VirtualCamera {
         return ids
     }
 
+    private static let lookupLog = Logger(subsystem: "com.harsha.android-webcam", category: "obs-lookup")
+    private static let lookups = OSAllocatedUnfairLock(initialState: 0)
+
+    /// Logs one line per lookup with a running count, so `log stream --level info` can show how often it runs.
     static func findDevice() throws -> CMIODeviceID {
+        let count = lookups.withLock { n -> Int in n += 1; return n }
+        lookupLog.info("CoreMediaIO device lookup #\(count)")
         for device in try objectIDs(CMIOObjectID(kCMIOObjectSystemObject), selector: kCMIOHardwarePropertyDevices) {
             var property = address(kCMIODevicePropertyDeviceUID)
             var uid: Unmanaged<CFString>?

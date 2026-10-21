@@ -30,3 +30,7 @@ Other tools on this Mac use the same ADB server. Stop and Quit remove only the a
 ## The headless checks don't touch the camera
 
 `--diagnose` and `--probe-hevc` don't start the phone camera, publish to the virtual camera or open a preview. A clean run of both says nothing about live capture.
+
+## Watching the OBS extension lookups
+
+Every CoreMediaIO device lookup for the OBS extension logs one line with a running count. Count them with `log stream --level info --predicate 'subsystem == "com.harsha.android-webcam" AND category == "obs-lookup"'`. Idle with adb found, the extension active and Setup closed, expect only the launch lookup; the 3 s timer must add none (kata:android-webcam#da0t).
