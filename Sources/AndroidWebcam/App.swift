@@ -940,13 +940,18 @@ enum AndroidWebcamApp {
     }
 
     static func diagnose() throws {
-        let devices = try ADB.devices()
+        let listing = try ADB.command(["devices", "-l"], timeout: 10)
+        let devices = ADB.parseDevices(listing)
+        // What adb lists on wireless debugging, whether or not the switch lets the app use it.
+        let wirelessListed = ADB.parseDevices(listing, wireless: true).filter(\.wireless)
         var driver = false
         var driverError: String?
         do { _ = try VirtualCamera.findDevice(); driver = true }
         catch { driverError = error.logText }
+        func entry(_ device: AndroidDevice) -> [String: String] { ["serial": device.serial, "model": device.model, "status": device.status] }
         let report: [String: Any] = [
-            "usb_devices": devices.map { ["serial": $0.serial, "model": $0.model, "status": $0.status] },
+            "usb_devices": devices.filter { !$0.wireless }.map(entry),
+            "wireless_switch": Wireless.enabled, "wireless_devices": wirelessListed.map(entry),
             "scrcpy_server_version": ScrcpyServer.version, "bundled_server": ADB.serverURL != nil,
             "adb": (try? ADB.executable().path) ?? "",
             "obs_camera_installed": driver, "obs_camera_error": driverError ?? "",

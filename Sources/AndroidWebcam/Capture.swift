@@ -6,6 +6,12 @@ struct AndroidDevice: Equatable {
     let serial: String
     let status: String
     let model: String
+    /// On wireless debugging: an mDNS name or ip:port serial instead of a USB one.
+    var wireless = false
+    /// The phone's own serial where the adb serial carries it (a USB serial, or the middle of an mDNS name).
+    var hardwareSerial: String?
+    /// product, model and device from adb, for matching an ip:port entry to its USB twin, which has no serial to compare.
+    var fingerprint = ""
     var authorized: Bool { status == "device" }
 }
 
@@ -115,14 +121,77 @@ enum ADB {
         parseDevices(try command(["devices", "-l"], timeout: 10, onLaunch: onLaunch))
     }
 
-    /// USB phones from `adb devices -l` or `adb track-devices -l` lines. Wireless and emulator entries are skipped.
-    static func parseDevices(_ text: String) -> [AndroidDevice] {
-        text.split(separator: "\n").compactMap { line in
-            let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
-            guard fields.count >= 2, fields.contains(where: { $0.hasPrefix("usb:") }) else { return nil }
-            let model = fields.first(where: { $0.hasPrefix("model:") }).map { String($0.dropFirst(6)).replacingOccurrences(of: "_", with: " ") }
-            return AndroidDevice(serial: fields[0], status: fields[1], model: model ?? fields[0])
+    /// Phones from `adb devices -l` or `adb track-devices -l` lines. Emulators are skipped. Wireless entries only
+    /// count when the wireless switch is on; then a phone listed over both USB and wireless appears once, as the
+    /// wireless entry.
+    static func parseDevices(_ text: String, wireless: Bool = Wireless.enabled) -> [AndroidDevice] {
+        let devices = text.split(separator: "\n").compactMap { parseLine($0, wireless: wireless) }
+        return wireless ? onePerPhone(devices) : devices
+    }
+
+    private static let mdnsSuffix = "._adb-tls-connect._tcp"
+
+    private static func parseLine(_ line: Substring, wireless allowWireless: Bool) -> AndroidDevice? {
+        let serial: String
+        let fields: [String]
+        // An mDNS serial has a space in it ("adb-R5CY11B8DHD-KmFSaA (2)._adb-tls-connect._tcp"), so it ends at the
+        // service type and the status follows.
+        if let service = line.range(of: mdnsSuffix) {
+            serial = line[..<service.upperBound].trimmingCharacters(in: .whitespaces)
+            fields = line[service.upperBound...].split(whereSeparator: \.isWhitespace).map(String.init)
+        } else {
+            let all = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard let first = all.first else { return nil }
+            serial = first
+            fields = Array(all.dropFirst())
         }
+        guard let status = fields.first else { return nil }
+        let isUSB = fields.contains { $0.hasPrefix("usb:") }
+        let isWireless = !isUSB && (serial.hasSuffix(mdnsSuffix) || isHostAndPort(serial))
+        guard isUSB || (allowWireless && isWireless) else { return nil }
+        func value(_ key: String) -> String? {
+            fields.first { $0.hasPrefix(key) }.map { String($0.dropFirst(key.count)) }
+        }
+        var device = AndroidDevice(serial: serial, status: status,
+                                   model: value("model:").map { $0.replacingOccurrences(of: "_", with: " ") } ?? serial)
+        device.wireless = isWireless
+        device.hardwareSerial = isWireless ? mdnsHardwareSerial(serial) : serial
+        device.fingerprint = ["product:", "model:", "device:"].map { value($0) ?? "" }.joined(separator: "|")
+        return device
+    }
+
+    /// `192.168.1.20:37215`, what `adb connect` makes the serial.
+    private static func isHostAndPort(_ serial: String) -> Bool {
+        guard let colon = serial.lastIndex(of: ":"), colon != serial.startIndex else { return false }
+        return Int(serial[serial.index(after: colon)...]) != nil
+    }
+
+    /// "adb-R5CY11B8DHD-KmFSaA (2)._adb-tls-connect._tcp" is "adb-<serial>-<random>", with " (2)" added when the
+    /// name is taken. An ip:port serial has no serial in it.
+    private static func mdnsHardwareSerial(_ serial: String) -> String? {
+        guard serial.hasPrefix("adb-"), let end = serial.range(of: mdnsSuffix)?.lowerBound else { return nil }
+        var name = String(serial[serial.index(serial.startIndex, offsetBy: 4)..<end])
+        if let taken = name.range(of: " (", options: .backwards), name.hasSuffix(")") { name = String(name[..<taken.lowerBound]) }
+        guard let dash = name.lastIndex(of: "-") else { return nil }
+        let hardware = String(name[..<dash])
+        return hardware.isEmpty ? nil : hardware
+    }
+
+    /// Keeps one entry for each phone, the first wireless one when it has both. Entries match by phone serial;
+    /// an ip:port entry has none, so it matches the one phone with the same product, model and device, and stays
+    /// separate when that's ambiguous.
+    private static func onePerPhone(_ devices: [AndroidDevice]) -> [AndroidDevice] {
+        var groups: [[AndroidDevice]] = []
+        for device in devices where device.hardwareSerial != nil {
+            if let index = groups.firstIndex(where: { $0[0].hardwareSerial == device.hardwareSerial }) { groups[index].append(device) }
+            else { groups.append([device]) }
+        }
+        for device in devices where device.hardwareSerial == nil {
+            let matches = groups.indices.filter { !device.fingerprint.isEmpty && groups[$0][0].fingerprint == device.fingerprint }
+            if matches.count == 1 { groups[matches[0]].append(device) } else { groups.append([device]) }
+        }
+        let chosen = Set(groups.map { group in (group.first(where: \.wireless) ?? group[0]).serial })
+        return devices.filter { chosen.contains($0.serial) }
     }
 
     static var serverURL: URL? {
@@ -670,16 +739,21 @@ final class CaptureController {
         }, onError: { [weak self] in self?.failDecoder($0) })
         decoder = videoDecoder
         var streaming = false
+        let packetLog = Wireless.enabled
+            ? PacketLog(label: "\(device.serial) \(device.wireless ? "wireless" : "usb") \(mode.title)") : nil
+        defer { packetLog?.stop() }
         while !ending(generation) {
             switch try ScrcpyHeader(readExactly(12, from: fd)) {
             case let .session(width, height):
                 guard width == mode.width, height == mode.height else {
                     throw WebcamError(message: "The phone's camera can't capture \(mode.width)x\(mode.height). It offered \(width)x\(height). Pick another capture mode and start again.")
                 }
-            case let .packet(size, pts, _):
+            case let .packet(size, pts, configuration):
                 // The camera can take a while to open; once media flows, a 3 second gap means the link is gone.
                 if !streaming { streaming = true; setReadTimeout(fd, seconds: 3) }
-                try videoDecoder.decode(readExactly(size, from: fd), pts: pts)
+                let payload = try readExactly(size, from: fd)
+                packetLog?.record(size: size, pts: pts, configuration: configuration)
+                try videoDecoder.decode(payload, pts: pts)
             }
         }
         lock.lock(); let failure = decoderError; lock.unlock()
