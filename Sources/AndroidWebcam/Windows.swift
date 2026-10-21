@@ -130,10 +130,16 @@ final class SetupModel: ObservableObject {
     var start: () -> Void = {}
 }
 
+/// View-local state held in an object, so these views don't need the `@State` macro (the Command Line Tools toolchain has no SwiftUIMacros plugin).
+final class StateBox<Value>: ObservableObject {
+    @Published var value: Value
+    init(_ value: Value) { self.value = value }
+}
+
 struct SetupView: View {
     @ObservedObject var model: SetupModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var copied: SetupAction?
+    @StateObject private var copied = StateBox<SetupAction?>(nil)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -167,7 +173,7 @@ struct SetupView: View {
                         if !step.done, !step.actions.isEmpty {
                             HStack(spacing: 8) {
                                 ForEach(step.actions, id: \.self) { action in
-                                    Button(copied == action ? "Copied" : action.title) { run(action) }
+                                    Button(copied.value == action ? "Copied" : action.title) { run(action) }
                                 }
                             }
                             .controlSize(.small)
@@ -211,8 +217,8 @@ struct SetupView: View {
     private func run(_ action: SetupAction) {
         action.perform()
         guard case .copy = action else { return }
-        copied = action
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied == action { copied = nil } }
+        copied.value = action
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied.value == action { copied.value = nil } }
     }
 
     @ViewBuilder private func mark(_ step: SetupStep) -> some View {
@@ -314,21 +320,21 @@ struct ImageSettingsView: View {
 struct SettingsView: View {
     @AppStorage(Prefs.startOnPlugIn) private var startOnPlugIn = false
     @AppStorage(Prefs.notifications) private var notifications = true
-    @State private var loginStatus = SMAppService.mainApp.status
-    @State private var loginError: String?
-    @State private var notificationsBlocked = false
+    @StateObject private var loginStatus = StateBox(SMAppService.mainApp.status)
+    @StateObject private var loginError = StateBox<String?>(nil)
+    @StateObject private var notificationsBlocked = StateBox(false)
     let onNotificationsChange: (Bool) -> Void
 
     var body: some View {
         Form {
-            Toggle("Launch at login", isOn: Binding(get: { loginStatus == .enabled }, set: setLaunchAtLogin))
-            if loginStatus == .requiresApproval {
+            Toggle("Launch at login", isOn: Binding(get: { loginStatus.value == .enabled }, set: { setLaunchAtLogin($0) }))
+            if loginStatus.value == .requiresApproval {
                 HStack {
                     Text("Allow \(appName) in Login Items to finish.").font(.callout).foregroundStyle(.secondary)
                     Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
                 }
             }
-            if let loginError { Text(loginError).font(.callout).foregroundStyle(.secondary) }
+            if let loginError = loginError.value { Text(loginError).font(.callout).foregroundStyle(.secondary) }
             Toggle("Start when the phone is plugged in", isOn: $startOnPlugIn)
             Text("Starts the webcam once when your saved phone connects. After you stop it, it waits until you plug the phone in again.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -336,7 +342,7 @@ struct SettingsView: View {
                 .onChange(of: notifications) { onNotificationsChange($0); checkNotifications() }
             Text("When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if notifications && notificationsBlocked {
+            if notifications && notificationsBlocked.value {
                 Label("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.",
                       systemImage: "bell.slash")
                     .font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -355,18 +361,18 @@ struct SettingsView: View {
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let blocked = settings.authorizationStatus == .denied
-            DispatchQueue.main.async { notificationsBlocked = blocked }
+            DispatchQueue.main.async { notificationsBlocked.value = blocked }
         }
     }
 
     private func setLaunchAtLogin(_ on: Bool) {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            loginError = nil
+            loginError.value = nil
         } catch {
-            loginError = "Couldn't change it. \(error.localizedDescription)"
+            loginError.value = "Couldn't change it. \(error.localizedDescription)"
         }
-        loginStatus = SMAppService.mainApp.status
+        loginStatus.value = SMAppService.mainApp.status
     }
 }
 
