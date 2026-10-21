@@ -538,7 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func showSetupOnFirstRun() {
-        guard devicesKnown, environmentKnown, !UserDefaults.standard.bool(forKey: Prefs.setupShown) else { return }
+        guard devicesKnown, environmentKnown, !Prefs.defaults.bool(forKey: Prefs.setupShown) else { return }
         Prefs.defaults.set(true, forKey: Prefs.setupShown)
         if !setup.complete { showSetup() }
     }

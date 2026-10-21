@@ -104,6 +104,13 @@ ok_if "the window server shows no app window at or above the desktop level" swif
 screencapture -x "$out/desktop-after.png"
 say "desktop pixels that changed (below the menu bar), before to after: $(swift "$root/scripts/dev-windows.swift" diff "$out/desktop-before.png" "$out/desktop-after.png" 2>/dev/null)"
 
+# Setup stays closed once closed, and shot never touches a directory
+"$dev" close setup >/dev/null
+ok_if "Setup stays closed after close" jq -e '[.windows[].id] | index("setup") == null' < <("$dev" state)
+mkdir -p "$out/keep-me" && : >"$out/keep-me/file"
+ok_if "shot refuses a directory path" bash -c "! '$dev' shot settings '$out/keep-me' >/dev/null 2>&1"
+ok_if "the directory and its file are still there" test -f "$out/keep-me/file"
+
 # Quit
 quit="$("$dev" choose Quit)"
 ok_if "Quit was accepted" jq -e '.quitting == true' <<<"$quit"

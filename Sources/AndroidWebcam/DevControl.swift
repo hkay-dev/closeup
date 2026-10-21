@@ -130,6 +130,10 @@ final class DevControl {
         case "shot":
             guard let window = window(request) else { return fail(noWindow(request)) }
             guard let path = request["path"] as? String, path.hasPrefix("/") else { return fail("shot needs an absolute path.") }
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+                return fail("\(path) is a directory. Give shot a file path such as \(path)/settings.png.")
+            }
             return DevShot.capture(window, to: path).map { succeed($0) } ?? fail("Couldn't save \(path).")
         case "effects":
             return succeed(["effects": DevMode.effects])
@@ -334,7 +338,7 @@ enum DevShot {
         process.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", path]
         let errors = Pipe()
         process.standardError = errors
-        try? FileManager.default.removeItem(atPath: path)
+        unlink(path)
         do {
             try process.run()
             process.waitUntilExit()
