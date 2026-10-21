@@ -37,3 +37,5 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-20: Check Audio Sync shows the microphone that it listens to, a level meter and progress while it listens, and stops 1.6 s after it hears the clap (8 s at most) instead of always taking 6 s. The result leads with the number ("Video 132 ms behind"). The window opens even when the webcam isn't live, with a Start Webcam button, and a denied microphone gets an Open Microphone Settings button. kata:android-webcam#3z0f kata:android-webcam#c7qd kata:android-webcam#wqss
 - 2026-10-21: Android Webcam: how should it ship?: B, No Ship it until the open-source release; the build stays in build/ (kata:android-webcam#8ab9).
 - 2026-10-21: Android Webcam: who starts the phone session?: A, I say go in chat and an agent takes the lease and walks me through it (kata:android-webcam#bcv0).
+- 2026-10-21: Test the webcam over wireless ADB and measure the latency: A, Use the proposed bar (wireless adds at most 50 ms to the USB median at 1080p30, and no stall over 200 ms in five minutes) (kata:android-webcam#e1f7).
+- 2026-10-21: Open-source release: B, Keep the repo private for now (kata:android-webcam#w5gj).
