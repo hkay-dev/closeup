@@ -9,7 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private static let coolModeIndex = CaptureMode.all.firstIndex { $0.title == "1080p / 30 fps" } ?? 0
 
     private let capture = CaptureController()
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    /// The dev automation instance has none: a hidden item would still be saved in the app's real defaults.
+    private let statusItem: NSStatusItem? = DevMode.isOn ? nil : NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let header = MenuHeaderView()
     private let mainAction = NSMenuItem(title: "Start Webcam", action: #selector(mainActionChosen), keyEquivalent: "s")
@@ -76,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var note: String?
 
     private var signalSources: [DispatchSourceSignal] = []
+    private var devControl: DevControl?
     private var window: NSWindow?
     private var clock: Timer?
     private var statusSymbol = ""
@@ -96,10 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.register()
-        let savedMode = UserDefaults.standard.string(forKey: Prefs.mode)
+        let savedMode = Prefs.defaults.string(forKey: Prefs.mode)
         if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
-        statusItem.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
-        statusItem.button?.toolTip = appName
+        statusItem?.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
+        statusItem?.button?.toolTip = appName
         for item in [menu, phoneMenu, modeMenu, cameraMenu] { item.autoenablesItems = false }
         menu.delegate = self
 
@@ -126,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             modeMenu.addItem(item)
         }
         for item in menu.items + modeMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
-        statusItem.menu = menu
+        statusItem?.menu = menu
         NSApp.mainMenu = makeKeyEquivalentMenu()
 
         capture.onStatus = { [weak self] message, _ in self?.captureStatus(message) }
@@ -183,17 +185,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         timer.tolerance = 1
         RunLoop.main.add(timer, forMode: .common)
         environmentTimer = timer
+        if DevMode.isOn { startDevControl() }
+    }
+
+    /// Opens the dev automation socket. Only a launch with ANDROID_WEBCAM_DEV_DIR gets here.
+    private func startDevControl() {
+        let control = DevControl(hooks: DevHooks(
+            menu: menu,
+            // Checks the environment in place, so a reply never shows the state from before the last change.
+            refresh: { [weak self] in
+                guard let self else { return }
+                if !self.capture.running {
+                    let adb = try? ADB.executable().path
+                    let extensionState = VirtualCamera.extensionState()
+                    self.environmentKnown = true
+                    self.adbPath = adb
+                    self.extensionActive = extensionState == .ready
+                }
+                self.setupChanged()
+            },
+            ready: { [weak self] in self?.devicesKnown == true && self?.environmentKnown == true },
+            open: { [weak self] name in
+                guard let self else { return false }
+                switch name {
+                case "setup": self.showSetup()
+                case "settings": self.showSettings()
+                case "image": self.showImageSettings()
+                case "sync": self.showSyncCheck()
+                case "preview": if self.window?.isVisible != true { self.togglePreview() }
+                default: return false
+                }
+                return true
+            },
+            close: { [weak self] name in
+                if name == "preview" { self?.window?.close() } else { self?.shelf.close(name) }
+            }))
+        control.start()
+        devControl = control
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         watcher.stop()
+        if DevMode.isOn { devControl?.stop(); DevMode.cleanUp() }
     }
 
     // Opening the running app again (Finder, Spotlight, Raycast) is the way in when the status item
     // is behind the notch or the menu bar is hidden: open the menu if the icon is reachable, else Settings.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if statusButtonReachable() {
-            statusItem.button?.performClick(nil)
+            statusItem?.button?.performClick(nil)
         } else {
             showSettings()
         }
@@ -201,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func statusButtonReachable() -> Bool {
-        guard let button = statusItem.button, let window = button.window, window.isVisible,
+        guard let button = statusItem?.button, let window = button.window, window.isVisible,
               window.occlusionState.contains(.visible) else { return false }
         let frame = window.frame
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
@@ -257,10 +297,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let symbol = !running ? "camera" : live && !stopRequested ? "camera.fill" : "camera.badge.ellipsis"
         if symbol != statusSymbol {
             statusSymbol = symbol
-            statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         }
-        statusItem.button?.toolTip = "\(appName): \(content.status)"
-        statusItem.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
+        statusItem?.button?.toolTip = "\(appName): \(content.status)"
+        statusItem?.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
         if let view = window?.contentView as? PreviewView {
             view.setVeil(content.picture == nil
                 ? .init(title: "No picture yet", text: "Finish setup from the menu bar, then start the webcam.")
@@ -415,7 +455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// so Start Webcam would fail too: open a fresh copy and quit. Once per lineage, so a device macOS never shows can't loop.
     private func relaunchForExtension() {
         let key = "ANDROID_WEBCAM_RELAUNCHED"
-        guard !capture.running, !relaunching, ProcessInfo.processInfo.environment[key] == nil,
+        guard !capture.running, !relaunching, !DevMode.isOn, ProcessInfo.processInfo.environment[key] == nil,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
         // Set once and never reset: the 3 s timer and the menu re-enter refreshEnvironment while the launch is pending,
         // and a launch error must not retry every 3 s.
@@ -436,7 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             self.devices = devices
             discoveryError = nil
             // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
-            let savedSerial = UserDefaults.standard.string(forKey: Prefs.serial)
+            let savedSerial = Prefs.defaults.string(forKey: Prefs.serial)
             if devices.contains(where: { $0.serial == savedSerial }) {
                 selectedSerial = savedSerial
             } else if !devices.contains(where: { $0.serial == selectedSerial }) {
@@ -499,14 +539,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func showSetupOnFirstRun() {
         guard devicesKnown, environmentKnown, !UserDefaults.standard.bool(forKey: Prefs.setupShown) else { return }
-        UserDefaults.standard.set(true, forKey: Prefs.setupShown)
+        Prefs.defaults.set(true, forKey: Prefs.setupShown)
         if !setup.complete { showSetup() }
     }
 
     /// Starts once when the saved phone shows up. After capture ends, waits for that phone to be unplugged.
     private func autoStartIfNeeded() {
-        guard UserDefaults.standard.bool(forKey: Prefs.startOnPlugIn), !capture.running, setup.complete,
-              let serial = UserDefaults.standard.string(forKey: Prefs.serial), serial != autoStartBlocked,
+        guard Prefs.defaults.bool(forKey: Prefs.startOnPlugIn), !capture.running, setup.complete,
+              let serial = Prefs.defaults.string(forKey: Prefs.serial), serial != autoStartBlocked,
               let device = devices.first(where: { $0.serial == serial && $0.authorized }) else { return }
         autoStartBlocked = serial
         startCapture(device)
@@ -514,7 +554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func lensList(_ serial: String) -> [CameraLens] {
         if let list = lenses[serial] { return list }
-        let data = UserDefaults.standard.data(forKey: Prefs.lenses(serial))
+        let data = Prefs.defaults.data(forKey: Prefs.lenses(serial))
         let list = data.flatMap { try? JSONDecoder().decode([CameraLens].self, from: $0) } ?? []
         lenses[serial] = list
         return list
@@ -532,7 +572,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 switch result {
                 case let .success(list) where !list.isEmpty:
                     self.lenses[serial] = list
-                    if let data = try? JSONEncoder().encode(list) { UserDefaults.standard.set(data, forKey: Prefs.lenses(serial)) }
+                    if let data = try? JSONEncoder().encode(list) { Prefs.defaults.set(data, forKey: Prefs.lenses(serial)) }
                 case .success: break
                 case let .failure(error):
                     self.lensQueries.remove(serial)
@@ -547,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func startCapture(_ device: AndroidDevice, quiet: Bool = false) {
         guard !capture.running else { return }
-        let saved = UserDefaults.standard.string(forKey: Prefs.lensID)
+        let saved = Prefs.defaults.string(forKey: Prefs.lensID)
         runLensID = lensList(device.serial).contains { $0.id == saved } ? saved : nil
         runDevice = device
         runModeIndex = modeIndex
@@ -555,9 +595,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         switchingLens = false; stopRequested = false; cableLoose = false; hotNotified = false
         quietStart = quiet
         // Asked here rather than at launch, so the prompt comes when there's something to say.
-        if UserDefaults.standard.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
+        if Prefs.defaults.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
         note = nil
-        UserDefaults.standard.set(device.serial, forKey: Prefs.serial)
+        Prefs.defaults.set(device.serial, forKey: Prefs.serial)
         capture.macSharpness = Float(imageStore.macSharpness)
         // Keeps App Nap from throttling the frame path while no window of ours is on screen. Idle sleep stays the
         // receiving app's call: a call or a recording holds its own assertion.
@@ -602,7 +642,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
             live = true
             liveSince = liveSince ?? Date()
-            if switchingLens, let lens = runLensID { UserDefaults.standard.set(lens, forKey: Prefs.lensID) }
+            if switchingLens, let lens = runLensID { Prefs.defaults.set(lens, forKey: Prefs.lensID) }
             cableLoose = false; switchingLens = false; quietStart = false
         } else {
             live = false
@@ -665,7 +705,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func switchToCoolMode() {
         modeIndex = Self.coolModeIndex
-        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
+        Prefs.defaults.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
         guard capture.running, !stopRequested, !restarting, let device = runDevice else { refreshUI(); return }
         restarting = true
         capture.stop { [weak self] in
@@ -679,13 +719,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func selectPhone(_ sender: NSMenuItem) {
         selectedSerial = devices[sender.tag].serial
-        UserDefaults.standard.set(selectedSerial, forKey: Prefs.serial)
+        Prefs.defaults.set(selectedSerial, forKey: Prefs.serial)
         refreshUI()
     }
 
     @objc private func selectMode(_ sender: NSMenuItem) {
         modeIndex = sender.tag
-        UserDefaults.standard.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
+        Prefs.defaults.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
         refreshUI()
     }
 
@@ -804,8 +844,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         previewWindow.contentMinSize = NSSize(width: 320, height: 180)
         previewWindow.isReleasedWhenClosed = false
         previewWindow.delegate = self
-        if !previewWindow.setFrameUsingName("Preview") { previewWindow.center() }
-        previewWindow.setFrameAutosaveName("Preview")
+        // The dev instance keeps no frame in the app's real defaults.
+        if DevMode.isOn { previewWindow.center() } else {
+            if !previewWindow.setFrameUsingName("Preview") { previewWindow.center() }
+            previewWindow.setFrameAutosaveName("Preview")
+        }
+        previewWindow.identifier = NSUserInterfaceItemIdentifier("preview")
         window = previewWindow
         setPreviewOpen(true)
         bringForward(previewWindow)
@@ -875,7 +919,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // MARK: Notifications
 
     /// UNUserNotificationCenter needs a bundled app; a bare `swift run` binary skips notifications.
-    private var canNotify: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+    private var canNotify: Bool { !DevMode.isOn && Bundle.main.bundleURL.pathExtension == "app" }
 
     private func requestNotificationPermission() {
         guard canNotify else { return }
@@ -895,7 +939,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private static let coolAction = "switch-to-cool"
 
     private func notify(_ notice: Notice, _ title: String, _ body: String, category: String? = nil) {
-        guard canNotify, UserDefaults.standard.bool(forKey: Prefs.notifications) else { return }
+        // The dev instance records the notification and shows nothing.
+        if DevMode.isOn, Prefs.defaults.bool(forKey: Prefs.notifications) { DevMode.record("notification", "\(title): \(body)") }
+        guard canNotify, Prefs.defaults.bool(forKey: Prefs.notifications) else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -931,7 +977,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         DispatchQueue.main.async { [weak self] in
             switch action {
             case Self.coolAction: self?.switchToCoolMode()
-            case UNNotificationDefaultActionIdentifier: self?.statusItem.button?.performClick(nil)
+            case UNNotificationDefaultActionIdentifier: self?.statusItem?.button?.performClick(nil)
             default: break
             }
             completionHandler()

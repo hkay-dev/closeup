@@ -14,8 +14,11 @@ enum Prefs {
     static let setupShown = "setupShown"
     static func lenses(_ serial: String) -> String { "lenses.\(serial)" }
 
+    /// The app's settings. The dev automation instance keeps its own suite (see DevControl.swift).
+    static let defaults: UserDefaults = DevMode.defaults ?? .standard
+
     static func register() {
-        UserDefaults.standard.register(defaults: [startOnPlugIn: false, notifications: true, macSharpness: 0.0])
+        defaults.register(defaults: [startOnPlugIn: false, notifications: true, macSharpness: 0.0])
     }
 }
 
@@ -24,7 +27,9 @@ let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? Strin
 let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development build"
 
 /// Puts a window in front of the app the user is in. Activation alone doesn't bring an accessory app forward.
+/// The dev automation instance parks it below the desktop instead.
 func bringForward(_ window: NSWindow) {
+    if DevMode.isOn { DevMode.park(window); return }
     if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
     window.makeKeyAndOrderFront(nil)
     window.orderFrontRegardless()
@@ -101,6 +106,7 @@ enum SetupAction: Hashable {
     }
 
     func perform() {
+        if DevMode.isOn { DevMode.record("setup-action", title); return }
         switch self {
         case let .copy(command):
             NSPasteboard.general.clearContents()
@@ -241,9 +247,9 @@ final class ImageSettingsStore: ObservableObject {
     var onChange: () -> Void = {}
 
     init() {
-        let data = UserDefaults.standard.data(forKey: Prefs.imageSettings)
+        let data = Prefs.defaults.data(forKey: Prefs.imageSettings)
         phone = data.flatMap { try? JSONDecoder().decode(PhoneImageSettings.self, from: $0) } ?? PhoneImageSettings()
-        macSharpness = UserDefaults.standard.double(forKey: Prefs.macSharpness)
+        macSharpness = Prefs.defaults.double(forKey: Prefs.macSharpness)
     }
 
     func reset() {
@@ -252,8 +258,8 @@ final class ImageSettingsStore: ObservableObject {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(phone) { UserDefaults.standard.set(data, forKey: Prefs.imageSettings) }
-        UserDefaults.standard.set(macSharpness, forKey: Prefs.macSharpness)
+        if let data = try? JSONEncoder().encode(phone) { Prefs.defaults.set(data, forKey: Prefs.imageSettings) }
+        Prefs.defaults.set(macSharpness, forKey: Prefs.macSharpness)
         onChange()
     }
 }
@@ -318,8 +324,8 @@ struct ImageSettingsView: View {
 // MARK: Settings
 
 struct SettingsView: View {
-    @AppStorage(Prefs.startOnPlugIn) private var startOnPlugIn = false
-    @AppStorage(Prefs.notifications) private var notifications = true
+    @AppStorage(Prefs.startOnPlugIn, store: Prefs.defaults) private var startOnPlugIn = false
+    @AppStorage(Prefs.notifications, store: Prefs.defaults) private var notifications = true
     @StateObject private var loginStatus = StateBox(SMAppService.mainApp.status)
     @StateObject private var loginError = StateBox<String?>(nil)
     @StateObject private var notificationsBlocked = StateBox(false)
@@ -331,7 +337,9 @@ struct SettingsView: View {
             if loginStatus.value == .requiresApproval {
                 HStack {
                     Text("Allow \(appName) in Login Items to finish.").font(.callout).foregroundStyle(.secondary)
-                    Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                    Button("Open Login Items") {
+                        if DevMode.isOn { DevMode.record("open-login-items", "Open Login Items") } else { SMAppService.openSystemSettingsLoginItems() }
+                    }
                 }
             }
             if let loginError = loginError.value { Text(loginError).font(.callout).foregroundStyle(.secondary) }
@@ -358,7 +366,7 @@ struct SettingsView: View {
     }
 
     private func checkNotifications() {
-        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        guard !DevMode.isOn, Bundle.main.bundleURL.pathExtension == "app" else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let blocked = settings.authorizationStatus == .denied
             DispatchQueue.main.async { notificationsBlocked.value = blocked }
@@ -366,6 +374,11 @@ struct SettingsView: View {
     }
 
     private func setLaunchAtLogin(_ on: Bool) {
+        if DevMode.isOn {
+            DevMode.record("launch-at-login", on ? "on" : "off")
+            loginError.value = "The dev instance leaves login items alone."
+            return
+        }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError.value = nil
@@ -460,7 +473,8 @@ struct SyncCheckView: View {
                 }
                 if microphoneSettings {
                     Button("Open Microphone Settings") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
+                        if DevMode.isOn { DevMode.record("open-url", url.absoluteString) } else { NSWorkspace.shared.open(url) }
                     }
                 }
             }

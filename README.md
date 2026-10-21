@@ -68,6 +68,8 @@ These modes do not create the menu bar item, open a preview, start the phone cam
 
 `--diagnose` checks USB device discovery, bundled server presence, and the OBS extension's device identity. It also reports the hidden wireless switch and any wireless phones adb lists; the app stays USB only unless that switch is on (see [docs/wireless-latency-session.md](docs/wireless-latency-session.md)). `--probe-hevc` checks the hardware decoder using a supplied Annex B HEVC sample with access-unit delimiters. Probe frames are discarded.
 
+To walk the menu, Setup, Settings, Image Settings and Check Audio Sync without a VM and without anything showing on screen, run the app as an off-screen dev instance with `scripts/dev.sh` (isolated settings, no menu bar item, windows parked below the desktop, a control socket that exists only in that mode). See [docs/dev-automation.md](docs/dev-automation.md).
+
 ## Checks on this Mac
 
 The release build passed with no compiler warnings. The app's local signature, property list, and build script checks passed. Diagnostics found the bundled server and approved OBS camera extension, with no phone connected.

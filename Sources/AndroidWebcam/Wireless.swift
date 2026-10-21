@@ -13,7 +13,7 @@ enum Wireless {
         if let value = ProcessInfo.processInfo.environment[environmentKey] {
             return ["1", "true", "yes", "on"].contains(value.lowercased())
         }
-        return UserDefaults.standard.bool(forKey: defaultsKey)
+        return Prefs.defaults.bool(forKey: defaultsKey)
     }()
 }
 
