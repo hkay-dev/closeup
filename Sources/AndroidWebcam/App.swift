@@ -208,8 +208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // A notch leaves two usable strips of menu bar; the icon must sit in one of them.
         if screen.safeAreaInsets.top > 0,
            let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-            let x = frame.midX - screen.frame.minX
-            return x <= left.maxX || x >= right.minX
+            let x = frame.midX
+            return x <= screen.frame.minX + left.width || x >= screen.frame.maxX - right.width
         }
         return true
     }
