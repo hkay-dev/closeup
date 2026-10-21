@@ -5,7 +5,7 @@ summary: The user journeys of Android Webcam (core, regular, rare), each with wh
 
 # Journeys
 
-Built on 2026-10-21 at d531cd4 from PRODUCT.md, README.md, decisions.md, notes.md, wireless-latency-session.md and the app itself. A bug bash (see the `bug-bash` skill) walks these. Update it when a feature lands.
+Built on 2026-10-21 at d531cd4 from PRODUCT.md, README.md, decisions.md, notes.md, wireless-latency-session.md and the app itself; read again at cdb3e7d, where no journey changed. A bug bash (see the `bug-bash` skill) walks these. Update it when a feature lands.
 
 Who is always Harsha, on the Mac, with a Samsung phone on a mount over USB-C, unless a step says otherwise. "The menu" is the menu bar item's menu.
 
@@ -153,7 +153,8 @@ Touches: Wireless.swift, DeviceWatcher parsing, `--diagnose` wireless fields.
 Who and where: Harsha or an agent in a shell.
 Steps:
 1. `AndroidWebcam --diagnose` prints JSON with usb_devices, bundled server, adb path, OBS extension state, HEVC support, wireless fields; it starts no camera or preview.
-2. `--probe-hevc <file>` decodes a sample; bad arguments exit 1.
+2. `--probe-hevc <file>` decodes a sample; bad arguments exit 1. The sample is Annex B HEVC with access-unit delimiters (`ffmpeg -f lavfi -i testsrc=size=1280x720:rate=30 -t 2 -c:v libx265 -x265-params aud=1 -pix_fmt yuv420p -f hevc sample.h265`). Two samples joined end to end at different sizes decode as one stream and report the last size. A sample without delimiters, without parameter sets or cut off exits 1 with one plain sentence.
+3. `--diagnose` lists every wireless phone adb knows under `wireless_devices` whether or not the switch is on (`adb connect 127.0.0.1:<emulator adb port>` makes one without a phone). An emulator never appears under `usb_devices`: its adb line has no `usb:` field, so the both-transports dedupe needs a real phone.
 Touches: ADB, VirtualCamera lookup, VideoToolbox.
 
 ## Where features meet
@@ -172,3 +173,11 @@ Touches: ADB, VirtualCamera lookup, VideoToolbox.
 - **Second phone against the saved phone:** the saved phone wins whenever plugged in; a second phone doesn't steal the session or the saved serial.
 - **Wireless switch against USB only:** a phone on both transports shows once, as wireless, only with the switch on.
 - **Reopen against a running session and Settings:** reopening with the icon out of reach opens Settings, and nothing else moves.
+
+## Driving notes (no phone)
+
+- The GUI needs a throwaway macOS VM (the app is a menu bar item, and `--diagnose` and `--probe-hevc` are the only headless entries). A VM clone needs OBS.app to get the camera extension: step 1 downloaded it in the clone; `macvm install-app` of the Mac's `/Applications/OBS.app` (438 MB) should do it faster, not tried. Either way the extension is approved in the clone's System Settings with the account password.
+- The stand-in phone is an Android 36 emulator with `hw.camera.front=emulated`. Its camera ids are 1 (front) and 10 (back); id 0 doesn't exist, so preseed `defaults write com.harsha.android-webcam lensID -string 1`. The VM reaches it through a `socat` relay on the bridge address into the emulator's adb port, then `adb connect` in the VM, with the wireless switch on.
+- With the Mac's load near 70 the emulator's camera fails most frames ("Camera capture failed: frame N" every few seconds in logcat) and no packet reaches the server's socket, so a stream check there says nothing about the app.
+- A microphone needs `macvm vmpal set <vm> --microphone on`, which records the Mac's real microphone and needs Harsha's say-so. Without it Check Audio Sync stays on "No microphone found".
+- Heat should be simulable with `adb shell dumpsys battery set temp 450` (tenths of a degree; the app reads `dumpsys battery` every 10 seconds and counts 40 degrees as hot), and put back with `dumpsys battery reset`. Not tried yet.
