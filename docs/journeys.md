@@ -40,7 +40,7 @@ Who and where: Harsha on the Mac, before or during a call.
 Steps:
 1. Phone submenu lists plugged-in phones (a phone that hasn't allowed debugging says "allow USB debugging" and is disabled). Pick one.
 2. Capture Mode lists 4K · 60, 1080p · 60, 1080p · 30, 1080p · 120; disabled while running.
-3. While live, Camera lists the lenses; pick one and the header says "Switching camera" while the call keeps the camera.
+3. While live, Camera lists the lenses; pick one and the header says "Switching camera" while the call keeps the camera. A lens that can't run the mode goes back to the one that worked, and the header says so ("Back · Main can't run 1080p · 30. The webcam went back to Front.").
 4. Zoom In, Zoom Out, Flashlight change the live picture; the flashlight state shows in the menu.
 Touches: saved serial, mode and lens in UserDefaults, the phone's camera list, control socket messages.
 
@@ -74,7 +74,8 @@ Who and where: Harsha on the Mac in a call, the cable on a mount gets bumped.
 Steps:
 1. The picture freezes under a veil "Plug the phone back in"; icon shows reconnecting; after about 1.5 s a "Phone disconnected" notification appears. The call keeps the virtual camera.
 2. Plug the phone back in. The picture resumes on its own; "Phone reconnected" replaces the disconnected notification.
-3. If the phone does not come back, Stop Webcam still works.
+3. If the stream drops while the phone stays plugged in (its camera server restarted), the veil says "Reconnecting to <model>" and no notification appears.
+4. If the phone does not come back, Stop Webcam still works.
 Touches: device watcher, reconnect loop, cable notification topic, preview and header veils, image settings, lens and zoom state.
 
 ## The phone runs hot (regular)
@@ -90,7 +91,7 @@ Steps:
 1. Settings shows Launch at login, Start when the phone is plugged in, Notifications and the version line.
 2. First Start with Notifications on asks permission once. A denied permission shows a line in Settings saying how to turn it on.
 3. Click a notification: the menu opens.
-4. Start when plugged in: with the saved phone connecting, the webcam starts once; after Stop it waits for an unplug.
+4. Start when plugged in: the webcam starts at launch with the saved phone plugged in, or when the saved phone shows up allowed; never because the menu opened or the switch was turned on. After Stop it waits until the phone has been unplugged for 5 s.
 Touches: SMAppService, UNUserNotificationCenter, UserDefaults, autostart blocking.
 
 ## Stopped on an error (regular)
@@ -130,7 +131,7 @@ Who and where: Harsha on the Mac with no phone, no adb, a phone that never allow
 Steps:
 1. No phone: the Phone submenu says "No USB phone connected" and Start Webcam is disabled; the header says what to do next.
 2. adb missing: setup says to install platform tools; `--diagnose` says so and exits 1.
-3. A phone shows as "(allow USB debugging)" until it is approved, then becomes selectable without relaunching.
+3. A phone shows as "(allow USB debugging)" until it is approved, then becomes selectable without relaunching. One that adb lists as offline or connecting shows "(connecting, unplug and replug if it stays)".
 4. adb track-devices fails: the app says "adb isn't working" and keeps retrying.
 Touches: DeviceWatcher, setup model, the menu's phone items.
 
@@ -178,7 +179,7 @@ Touches: ADB, VirtualCamera lookup, VideoToolbox.
 
 - The GUI needs a throwaway macOS VM (the app is a menu bar item, and `--diagnose` and `--probe-hevc` are the only headless entries). A clone needs OBS.app to get the camera extension. `macvm install-app "$vm" /Applications/OBS.app` from the Mac works (about 1 minute), then OBS's Start Virtual Camera raises "would like to use a new camera extension", Open System Settings, the toggle, the account password, Done. Doing that in every clone takes about 8 minutes of a 20 minute hold; use the base below instead.
 - **The OBS base:** `macOS 27 Android Webcam Base` is `macOS 27 Base` plus OBS Studio 32.2.2 in /Applications with its camera extension approved (`systemextensionsctl list` shows `com.obsproject.obs-studio.mac-camera-extension` as `[activated enabled]`), OBS's permission screen continued without granting anything, OBS's update check answered Don't Check, and OBS quit. It has no Android Webcam app, no adb, no account and no credential. Its snapshot is `OBS 32.2.2 with camera extension approved`. Clone it with `macvm up <owner> --base "macOS 27 Android Webcam Base"` (or `MACVM_BASE`), then `macvm install-app` the build and `vmpal cp` the Mac's adb to `Library/Android/sdk/platform-tools/adb` (where the app looks first in the VM; `chmod +x` it). `--diagnose` in such a clone reports `obs_camera_installed: true`; without adb it exits 1 on the install line before printing. Going Live in a clone from it needs an emulator and was not re-proved here. Never test in the base itself. The first-run Setup journey still needs the plain `macOS 27 Base`, where the extension is not approved.
-- The stand-in phone is an Android 36 emulator with `hw.camera.front=emulated`. Its camera ids are 1 (front) and 10 (back); id 0 doesn't exist, so preseed `defaults write com.harsha.android-webcam lensID -string 1`. The VM reaches it through a `socat` relay on the bridge address into the emulator's adb port, then `adb connect` in the VM, with the wireless switch on.
+- On this Mac (no VM): the off-screen dev instance with the AVD `Webcam_A` on port 5920 and `ADB=scripts/fault-adb` drives every journey except real banners, Mac sleep and a microphone (docs/dev-automation.md). Its camera ids are 0 (Back, no 1080p) and 1 (Front); seed `lensID=1` and the lens list at `start`. In the VM the older stand-in was an Android 36 emulator whose camera ids are 1 (front) and 10 (back), so `defaults write com.harsha.android-webcam lensID -string 1` there. The VM reaches it through a `socat` relay on the bridge address into the emulator's adb port, then `adb connect` in the VM, with the wireless switch on.
 - With the Mac's load near 70 to 100 the emulator's camera can fail most frames. At step 3 (load about 90) a 1080p stream still ran for minutes and the Live clock kept counting.
 - A microphone needs `macvm vmpal set <vm> --microphone on`, which records the Mac's real microphone and needs Harsha's say-so. Without it Check Audio Sync stays on "No microphone found".
 - Heat works: `adb shell dumpsys battery set temp 450` (tenths of a degree) shows "113°F" in the header within 10 seconds. In 1080p / 30 (the cool mode) there is no switch item, only a notification; in 1080p / 60 the menu shows "Switch to 1080p • 30 to cool down" and choosing it restarts quietly at 1080p • 30 with the item gone. `dumpsys battery reset` puts it back.

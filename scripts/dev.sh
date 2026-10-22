@@ -4,7 +4,7 @@
 # socket that only exists because ANDROID_WEBCAM_DEV_DIR is set. Nothing shows on screen.
 #
 #   scripts/dev.sh build                 build the app (scripts/build-app.sh) through the build queue
-#   scripts/dev.sh start                 start the instance; prints its directory
+#   scripts/dev.sh start [KEY=VALUE ...] start the instance; prints its directory. KEY=VALUE (KEY:=JSON) seeds its defaults
 #   scripts/dev.sh stop                  choose Quit, wait for the process, remove the directory
 #   scripts/dev.sh state                 header text, menu items, open windows
 #   scripts/dev.sh menu                  header text and menu items only
@@ -57,6 +57,15 @@ start() {
     fi
     local dir
     dir="$(mktemp -d /tmp/awdev.XXXXXX)"
+    # key=value (a string) or key:=json seeds the instance's defaults, such as lensID=1 or setupShown:=true.
+    if (( $# )); then
+        python3 -c 'import json, sys
+seed = {}
+for arg in sys.argv[2:]:
+    if ":=" in arg: key, value = arg.split(":=", 1); seed[key] = json.loads(value)
+    else: key, value = arg.split("=", 1); seed[key] = value
+json.dump(seed, open(sys.argv[1] + "/seed.json", "w"))' "$dir" "$@"
+    fi
     ANDROID_WEBCAM_DEV_DIR="$dir" nohup "$binary" >"$dir/app.log" 2>&1 &
     echo $! >"$dir/pid"
     disown
@@ -95,7 +104,7 @@ command="${1:-}"
 shift
 case "$command" in
     build) exec qm with build "awebcam-$(basename "$root")" -- "$root/scripts/build-app.sh" ;;
-    start) start ;;
+    start) start "$@" ;;
     stop) stop ;;
     state | menu | windows | effects | defaults | ping) ctl "$command" ;;
     choose) [[ $# -eq 1 ]] || usage; ctl choose "title=$1" ;;

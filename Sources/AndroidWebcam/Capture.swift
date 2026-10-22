@@ -61,7 +61,7 @@ enum ADB {
     /// The first executable adb among the usual install locations, cached once found.
     static func executable() throws -> URL {
         lookupLock.lock(); defer { lookupLock.unlock() }
-        if let found { return found }
+        if let found, FileManager.default.isExecutableFile(atPath: found.path) { return found }
         let environment = ProcessInfo.processInfo.environment
         let candidates = [
             environment["ADB"],
@@ -178,7 +178,8 @@ enum ADB {
         return hardware.isEmpty ? nil : hardware
     }
 
-    /// Keeps one entry for each phone, the first wireless one when it has both. Entries match by phone serial;
+    /// Keeps one entry for each phone: an allowed wireless one, else any allowed one, else a wireless one, else the
+    /// first. Entries match by phone serial;
     /// an ip:port entry has none, so it matches the one phone with the same product, model and device, and stays
     /// separate when that's ambiguous.
     private static func onePerPhone(_ devices: [AndroidDevice]) -> [AndroidDevice] {
@@ -191,7 +192,10 @@ enum ADB {
             let matches = groups.indices.filter { !device.fingerprint.isEmpty && groups[$0][0].fingerprint == device.fingerprint }
             if matches.count == 1 { groups[matches[0]].append(device) } else { groups.append([device]) }
         }
-        let chosen = Set(groups.map { group in (group.first(where: \.wireless) ?? group[0]).serial })
+        let chosen = Set(groups.map { group in
+            (group.first { $0.wireless && $0.authorized } ?? group.first(where: \.authorized)
+                ?? group.first(where: \.wireless) ?? group[0]).serial
+        })
         return devices.filter { chosen.contains($0.serial) }
     }
 
@@ -285,6 +289,8 @@ final class CaptureController {
     /// True while the current session's frames flow.
     private var live = false
     private var lensID: String?
+    /// The lens that last sent frames in this capture, which a failed lens switch goes back to.
+    private var streamedLens: String?
     private var image = PhoneImageSettings()
     /// Bumped by switchLens: the session it ends was asked to end, so that end isn't an error.
     private var lensGeneration = 0
@@ -301,6 +307,8 @@ final class CaptureController {
     var onFrame: ((CVPixelBuffer) -> Void)?
     var onPhoneStats: ((PhoneStats) -> Void)?
     var onLive: ((Bool) -> Void)?
+    /// Called on main with (lens it went back to, lens that failed) when a switched-to lens can't start.
+    var onLensFallback: ((String, String) -> Void)?
     /// 0 = off ... 1 = strong; applied from the next frame.
     var macSharpness: Float {
         get { sharpener.amount }
@@ -334,10 +342,10 @@ final class CaptureController {
         if changed { DispatchQueue.main.async { [weak self] in self?.onLive?(value) } }
     }
 
-    func start(device: AndroidDevice, mode: CaptureMode, lensID: String?, image: PhoneImageSettings) {
+    func start(device: AndroidDevice, mode: CaptureMode, lensID: String?, image: PhoneImageSettings, resume: Bool = false) {
         guard !running else { return }
         lock.lock()
-        stopping = false; decoderError = nil; streamed = false; serverErrors = ""
+        stopping = false; decoderError = nil; streamed = resume; serverErrors = ""; streamedLens = nil
         self.lensID = lensID
         self.image = image
         statsGeneration += 1
@@ -567,7 +575,9 @@ final class CaptureController {
                     if shouldStop || !ending(generation) { break }
                 } catch where !shouldStop && ending(generation) {
                     // switchLens ended this session; whatever it threw on the way out isn't a failure.
-                } catch let error as TransportError where !shouldStop && hasStreamed {
+                } catch where !shouldStop && !hasStreamed && revertLens(after: error) {
+                    // The lens just switched to couldn't start in this mode, and the call keeps the one that worked.
+                } catch let error as TransportError where !shouldStop && hasStreamed && !serverNamedCause {
                     fputs("Phone session ended. \(error.logText)\n", stderr)
                     report("Reconnecting to \(device.model). \(error.message)", active: true)
                     guard waitForDevice(device.serial) else { break }
@@ -599,6 +609,13 @@ final class CaptureController {
         if text.contains("Could not select camera size") {
             return "The phone's camera can't capture in this mode. Pick a lower capture mode and start again."
         }
+        if text.contains("high speed supported size") {
+            return "The phone's camera can't capture 120 fps at this size. Pick another capture mode and start again."
+        }
+        // MediaCodec refuses a size or rate it can't encode while the session is being set up.
+        if text.contains("Capture/encoding error: java.lang.IllegalArgumentException") {
+            return "The phone can't record video in this mode. Pick a lower capture mode and start again."
+        }
         if text.contains("CameraAccessException") || text.contains("Camera error") || text.contains("Camera configuration error") {
             return "The phone's camera reported an error. Unlock the phone and start again, and restart the phone if it keeps happening."
         }
@@ -614,6 +631,27 @@ final class CaptureController {
     private var hasStreamed: Bool {
         lock.lock(); defer { lock.unlock() }
         return streamed
+    }
+
+    /// True when the phone server's ERROR lines name a cause the user has to fix, so reconnecting can't help.
+    private var serverNamedCause: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return Self.explainServer(serverErrors) != nil
+    }
+
+    /// After a lens switch fails before its first frame, goes back to the lens that last streamed. False when there's
+    /// none or it's the one that failed.
+    private func revertLens(after error: Error) -> Bool {
+        lock.lock()
+        guard let good = streamedLens, let failed = lensID, failed != good else { lock.unlock(); return false }
+        lensID = good
+        // That lens has streamed, so its next failure is a loose cable again, not a setup error.
+        streamed = true
+        let server = serverErrors
+        lock.unlock()
+        fputs("Camera \(failed) didn't start, going back to \(good). \(error.logText)\(server.isEmpty ? "" : " Phone said: \(server)")\n", stderr)
+        DispatchQueue.main.async { [weak self] in self?.onLensFallback?(good, failed) }
+        return true
     }
 
     /// Polls adb every second until the phone is back and authorized. Returns false if the user stops first.
@@ -642,6 +680,9 @@ final class CaptureController {
         let controlDrained = DispatchSemaphore(value: 0)
         var server: Process?
         let serverExited = DispatchSemaphore(value: 0)
+        let logDone = DispatchSemaphore(value: 0)
+        var logReading = false
+        var forwardAttempted = false
         var decoder: HEVCDecoder?
         defer {
             decoder?.finish()
@@ -654,16 +695,32 @@ final class CaptureController {
             }
             lock.lock(); socket = -1; lock.unlock()
             if fd >= 0 { Darwin.close(fd) }
-            if let server { end(server, exited: serverExited) }
+            if let server {
+                // After a failure the server may be about to exit by itself with its ERROR line still in flight.
+                if !ending(generation) { _ = serverExited.wait(timeout: .now() + 1) }
+                end(server, exited: serverExited)
+            }
+            if logReading, !ending(generation) { _ = logDone.wait(timeout: .now() + 1) }
             if let port {
                 do { _ = try ADB.command(["-s", device.serial, "forward", "--remove", "tcp:\(port)"], timeout: 5) }
                 catch { fputs("Forward cleanup failed. \(error.logText)\n", stderr) }
+            } else if forwardAttempted {
+                // adb may have made the forward even though its answer never arrived; remove only this session's.
+                do {
+                    let target = "localabstract:scrcpy_\(scid)"
+                    for line in try ADB.command(["-s", device.serial, "forward", "--list"], timeout: 5).split(separator: "\n") {
+                        let fields = line.split(whereSeparator: \.isWhitespace)
+                        guard fields.count == 3, fields[0] == device.serial, fields[1].hasPrefix("tcp:"), fields[2] == target else { continue }
+                        _ = try ADB.command(["-s", device.serial, "forward", "--remove", String(fields[1])], timeout: 5)
+                    }
+                } catch { fputs("Forward cleanup failed. \(error.logText)\n", stderr) }
             }
             do { _ = try ADB.command(["-s", device.serial, "shell", "rm", "-f", remote], timeout: 5) }
             catch { fputs("Phone cleanup failed. \(error.logText)\n", stderr) }
             try? FileManager.default.removeItem(at: Self.sessionFile)
         }
         _ = try adb(["-s", device.serial, "push", serverURL.path, remote], timeout: 30)
+        forwardAttempted = true
         let forwarding = try adb(["-s", device.serial, "forward", "tcp:0", "localabstract:scrcpy_\(scid)"])
         guard let allocated = Int(forwarding.trimmingCharacters(in: .whitespacesAndNewlines)), (1...65535).contains(allocated) else {
             throw TransportError(message: "adb couldn't connect to the phone's camera. Unplug the phone, plug it back in and start again.",
@@ -694,7 +751,9 @@ final class CaptureController {
                 pending = lines.removeLast()
                 for line in lines where line.contains("ERROR") { self?.noteServerError(line) }
             }
+            logDone.signal()
         }.start()
+        logReading = true
         shell.terminationHandler = { _ in serverExited.signal() }
         try shell.run()
         server = shell
@@ -727,9 +786,11 @@ final class CaptureController {
                 try camera.send(frame)
                 self.onFrame?(frame)
                 self.lock.lock()
+                // A frame of the lens switchLens just ended must not count as the new lens having streamed.
+                let current = self.lensGeneration == generation && !self.stopping
                 let firstFrame = !announced
                 announced = true
-                self.streamed = true
+                if current { self.streamed = true; self.streamedLens = lens }
                 self.lock.unlock()
                 if firstFrame {
                     self.setLive(true)
@@ -828,8 +889,9 @@ final class CaptureController {
     }
 
     private func connect(port: Int, generation: Int, server: Process) throws -> Int32 {
-        // ADB may accept TCP before the phone has opened its abstract socket.
-        let deadline = Date().addingTimeInterval(5)
+        // ADB may accept TCP before the phone has opened its abstract socket. A busy or cold phone can take several
+        // seconds to start the server, and one that exits early ends the wait below at once.
+        let deadline = Date().addingTimeInterval(10)
         // A server that already exited won't accept, so its error shows at once instead of after the deadline.
         while Date() < deadline, server.isRunning {
             if ending(generation) { throw WebcamError(message: "Capture cancelled.") }
@@ -840,12 +902,26 @@ final class CaptureController {
             var timeout = timeval(tv_sec: 0, tv_usec: 200_000)
             setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
             var dummy: UInt8 = 1
-            if Self.connectLocal(fd, port: port), Darwin.recv(fd, &dummy, 1, 0) == 1, dummy == 0 {
+            var received = -1
+            let connected = Self.connectLocal(fd, port: port)
+            if connected {
+                // The wait is in 200 ms slices so a stop isn't held up. A timeout isn't a retry: the server may
+                // already hold this socket as its video socket, and a second connection would be taken as control.
+                let waitUntil = Date().addingTimeInterval(2)
+                repeat {
+                    received = Darwin.recv(fd, &dummy, 1, 0)
+                } while received < 0 && (errno == EAGAIN || errno == EINTR) && Date() < waitUntil && !ending(generation)
+            }
+            if received == 1, dummy == 0 {
                 // Until the first media packet the camera may still be opening, so allow 10 seconds.
                 setReadTimeout(fd, seconds: 10)
                 return fd
             }
             Darwin.close(fd)
+            // adb closes at once while the server isn't listening yet, which is the only case worth retrying.
+            guard !connected || received == 0 else {
+                throw TransportError(message: Self.cameraDidNotStart, detail: "The server sent no video handshake.")
+            }
             usleep(50_000)
         }
         throw TransportError(message: Self.cameraDidNotStart, detail: "The server didn't accept its video connection.")

@@ -39,3 +39,8 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-21: Android Webcam: who starts the phone session?: A, I say go in chat and an agent takes the lease and walks me through it (kata:android-webcam#bcv0).
 - 2026-10-21: Test the webcam over wireless ADB and measure the latency: A, Use the proposed bar (wireless adds at most 50 ms to the USB median at 1080p30, and no stall over 200 ms in five minutes) (kata:android-webcam#e1f7).
 - 2026-10-21: Open-source release: B, Keep the repo private for now (kata:android-webcam#w5gj).
+- 2026-10-22: Start when plugged in fires only when the saved phone shows up allowed (or at launch), never because the menu opened, the setting was turned on or another phone was picked. After Stop it waits until that phone has been gone from adb's list for 5 s outside the 20 s wake window, so a blink isn't an unplug. kata:android-webcam#5xnx
+- 2026-10-22: A lens picked mid-call that can't start in the current mode goes back to the lens that last streamed, with a note in the header, instead of stopping the webcam. The call keeps its picture. kata:android-webcam#5xnx
+- 2026-10-22: Reconnect doesn't retry when the phone server names a cause that a retry can't fix (camera in use, camera access off, a mode the camera or encoder can't run). It stops with that sentence. kata:android-webcam#5xnx
+- 2026-10-22: "Phone disconnected" only when adb no longer lists the phone. A stream that drops while the phone is still listed shows "Reconnecting to <phone>" and no notification. kata:android-webcam#5xnx
+- 2026-10-22: The phone server gets 10 s to start listening (5 s before), since a server that exits early already ends the wait at once. kata:android-webcam#5xnx

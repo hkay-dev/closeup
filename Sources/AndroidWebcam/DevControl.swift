@@ -14,11 +14,20 @@ enum DevMode {
     }()
     static var isOn: Bool { directory != nil }
 
-    /// The dev instance's own defaults, so it never reads or writes the real app's settings. Cleared on every launch.
+    /// The dev instance's own defaults, so it never reads or writes the real app's settings. Cleared on every launch,
+    /// then filled from `<dir>/seed.json` when `dev.sh start key=value` wrote one (a lens, a finished Setup). Arrays
+    /// and objects are stored as JSON data, the way the app saves its lens lists and image settings.
     static let suiteName = "com.harsha.android-webcam.dev." + (directory?.lastPathComponent ?? "none")
     static let defaults: UserDefaults? = {
         guard isOn, let suite = UserDefaults(suiteName: suiteName) else { return nil }
         suite.removePersistentDomain(forName: suiteName)
+        if let directory, let data = try? Data(contentsOf: directory.appendingPathComponent("seed.json")),
+           let seed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for (key, value) in seed {
+                let structured = value is [Any] || value is [String: Any]
+                suite.set(structured ? (try? JSONSerialization.data(withJSONObject: value)) as Any? : value, forKey: key)
+            }
+        }
         return suite
     }()
 
@@ -322,7 +331,9 @@ final class DevControlServer {
                 sent += count
             }
         }
-        if let after = result.after { DispatchQueue.main.async(execute: after) }
+        // A run loop block, not a main-queue block: Quit while capturing waits in a nested run loop for the stop's
+        // main-queue completion, which can't run while a main-queue block is still on the stack.
+        if let after = result.after { RunLoop.main.perform(after); CFRunLoopWakeUp(CFRunLoopGetMain()) }
     }
 }
 

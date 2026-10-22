@@ -8,6 +8,9 @@ final class DeviceWatcher {
     private let lock = NSLock()
     private var process: Process?
     private var stopped = false
+    // Only the follow thread touches these.
+    private var delivered = false
+    private var versionMismatch = false
 
     /// A plain thread, since it spends its life blocked in poll().
     func start() {
@@ -35,10 +38,16 @@ final class DeviceWatcher {
         var delay: TimeInterval = 1
         while !isStopped {
             let began = Date()
+            delivered = false
+            versionMismatch = false
             do { try stream() } catch { report(.failure(error)) }
-            // A stream that ran a while starts again at once; one that keeps failing backs off to 10 s.
-            delay = Date().timeIntervalSince(began) > 30 ? 1 : min(delay * 2, 10)
-            if !isStopped { Thread.sleep(forTimeInterval: delay) }
+            // A stream that delivered lists or ran a while starts again after 1 s; one that keeps failing backs off to 10 s.
+            let healthy = delivered || Date().timeIntervalSince(began) > 30
+            if healthy { delay = 1 }
+            // Restarting a client of the wrong version makes adb replace the server the other version started, so retry slowly.
+            let wait = versionMismatch ? 60 : delay
+            delay = healthy ? 1 : min(delay * 2, 10)
+            if !isStopped { Thread.sleep(forTimeInterval: wait) }
         }
     }
 
@@ -81,10 +90,22 @@ final class DeviceWatcher {
         readAvailable(reader, into: &pending, buffer: &buffer)
         parse(&pending)
         readAvailable(errorReader, into: &errorText, buffer: &buffer)
-        if process.terminationStatus != 0, !isStopped {
-            let detail = String(decoding: errorText, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isStopped else { return }
+        let detail = String(decoding: errorText, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        if detail.lowercased().contains("doesn't match this client") {
+            versionMismatch = true
+            throw TransportError(message: "Two different adb versions are installed, and they keep restarting each other's server. "
+                                 + "Keep one, or set ADB to the adb your other tools use. This app uses \(process.executableURL?.path ?? "adb").",
+                                 detail: "adb track-devices: \(detail)")
+        }
+        if process.terminationStatus != 0 {
             throw TransportError(message: "adb isn't working, so the app can't see the phone. It keeps trying.",
                                  detail: "adb track-devices exited \(process.terminationStatus): \(detail)")
+        }
+        // The adb server went away without a word. Say so, so the old list doesn't linger while the stream restarts.
+        if !delivered {
+            throw TransportError(message: "adb stopped, so the app can't see the phone. It keeps trying.",
+                                 detail: "adb track-devices exited 0 without listing any phones")
         }
     }
 
@@ -98,6 +119,7 @@ final class DeviceWatcher {
             guard pending.count >= 4 + length else { return }
             let text = String(decoding: pending.dropFirst(4).prefix(length), as: UTF8.self)
             pending.removeFirst(4 + length)
+            delivered = true
             report(.success(ADB.parseDevices(text)))
         }
     }

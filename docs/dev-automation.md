@@ -10,6 +10,7 @@ covers:
   - scripts/dev-ctl.py
   - scripts/dev-smoke.sh
   - scripts/dev-windows.swift
+  - scripts/fault-adb
 ---
 
 # Dev automation (off screen)
@@ -38,7 +39,7 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 
 | Command | What it does |
 | --- | --- |
-| `start` | Starts the instance in the background, waits for the first setup check, prints its directory. Later commands find it through `ANDROID_WEBCAM_DEV_DIR` or the directory `start` last printed. |
+| `start [KEY=VALUE ...]` | Starts the instance in the background, waits for the first setup check, prints its directory. Later commands find it through `ANDROID_WEBCAM_DEV_DIR` or the directory `start` last printed. `KEY=VALUE` (a string) or `KEY:=JSON` seeds its defaults before launch through `<dir>/seed.json`; arrays and objects are stored as JSON data, as the app saves them. For example `start lensID=1 phoneSerial=emulator-5920 startOnPlugIn:=true 'lenses.emulator-5920:=[{"id":"0","label":"Back · Main","facing":"back"},{"id":"1","label":"Front","facing":"front"}]'`. |
 | `stop` | Chooses Quit, waits for the process, removes the directory and the dev defaults. |
 | `state` | `header` (the lines the menu header shows, such as `3 of 5 setup steps done` and `Next: plug in your phone with a USB cable.`), `menu`, `windows`, `ready`. |
 | `menu` | Header and menu items: title, enabled, hidden, check state, key, submenus. |
@@ -68,12 +69,28 @@ With no phone the menu's main action is Finish Setup…, so `choose "Start Webca
 - `swift scripts/dev-windows.swift windows PID` lists the same windows from `CGWindowListCopyWindowInfo`, and `visible PID` exits 1 if a window over 30 points high sits at or above the desktop level. On 2026-10-21 the instance had two windows, both at layer -2147483624, and no status item window.
 - `screencapture -x` of the main display before and after the smoke journey differed in 0.01% of the pixels below the menu bar (`dev-windows.swift diff A B`). The menu bar clock is skipped.
 
+## A phone stand-in: an emulator and `scripts/fault-adb`
+
+Start Webcam, the lens, zoom and flashlight items, a hot phone and the error journeys run against an emulator with `ADB=$PWD/scripts/fault-adb` in the environment that starts the instance. `fault-adb` runs the real adb and bends what it says, from rules in `/tmp/fault-adb/faults` (`FAULT_ADB_FAULTS` moves it) that it reads on every call and every change, so editing the file mid-run plugs, unplugs and breaks things live. Every call goes to `calls.log` next to the rules, which shows what the app ran and when. The rules are in the script's header; the ones the 2026-10-22 pass used:
+
+| Rule | Drives |
+| --- | --- |
+| `usb emulator-5920` | the emulator passes the app's USB filter, without the wireless switch |
+| `hide emulator-5920` (with `adb shell pkill -f com.genymobile.scrcpy` to end the stream) | a pulled cable; removing the line plugs it back in |
+| `device R5CY11B8DHD unauthorized usb:2-1` | a second phone, one that hasn't allowed debugging, or `offline` |
+| `device adb-emulator-5920-Xy12Ab._adb-tls-connect._tcp device ...` plus `alias` to the emulator | one phone on USB and wireless (with `ANDROID_WEBCAM_WIRELESS=1`) |
+| `server-error Camera error CAMERA_IN_USE (4): ...` | another app holding the camera, at start or on a reconnect |
+| `hang forward tcp:0`, `delay 8 scid=` | a hung adb at Start, Stop and Quit; a slow server start |
+| `track-exit` | adb not working |
+
+The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated) on port 5920, booted inside the `emu` line (repo `AGENTS.md`). Its camera 1 (Front) runs 1080p at 30 and 60; camera 0 (Back) can't run 1080p, which makes a lens switch that fails. Neither runs 4K or 120 fps, which drives the mode errors. `dumpsys battery set temp 450` makes it hot.
+
 ## Limits
 
-- Start Webcam, the lens, zoom and flashlight items, a hot phone and a live sync check need a phone or a stand-in for `adb`. The app finds `adb` through `$ADB`, so a script that answers `track-devices` and fails `push` would drive the Stopped on an error journey; none exists yet.
+- The dev instance records notifications rather than posting them, so it can't show that one replaces or withdraws another; that needs the bundled app.
 - An off-screen window can't be captured, so parking is below the desktop level rather than off the display. Ramble found parked windows join a full-screen Space; this app hasn't been checked for that.
 - The accessibility walk reads this process through `AXUIElementCreateApplication(getpid())`, which AppKit answers in process. It needs no Accessibility permission. SwiftUI builds a window's tree on the first request, so `text` waits up to half a second for a window that just opened.
-- A window can't be dragged or resized, and there are no key presses or sliders; the instance posts no events.
+- A window can't be dragged, resized or minimized, and there are no key presses or sliders; the instance posts no events.
 
 ## Where it lives
 

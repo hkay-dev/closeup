@@ -363,6 +363,10 @@ struct SettingsView: View {
         .padding(20)
         .frame(width: 420)
         .onAppear(perform: checkNotifications)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginStatus.value = SMAppService.mainApp.status
+            checkNotifications()
+        }
     }
 
     private func checkNotifications() {

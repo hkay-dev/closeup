@@ -2,7 +2,7 @@
 
 A local macOS menu bar app that sends Android camera frames to the installed OBS camera extension. OBS stays installed and closed during capture. The preview reads the same decoded frames independently of webcam output.
 
-This is a development scaffold. The Android transport and camera output need a live phone check. Do not treat a successful build as live-camera verification.
+It has run live with a Galaxy S25 Ultra over USB into a video call and a QuickTime recording. Most menu, setup, error and reconnect paths have been driven against an Android emulator; the camera-specific ones (every lens, image controls on the phone's camera, 4K and 120 fps, a real cable pull and a clap test) still need the phone. [docs/phone-session.md](docs/phone-session.md) lists them in order.
 
 ## Build
 
@@ -72,13 +72,11 @@ To walk the menu, Setup, Settings, Image Settings and Check Audio Sync without a
 
 ## Checks on this Mac
 
-The release build passed with no compiler warnings. The app's local signature, property list, and build script checks passed. Diagnostics found the bundled server and approved OBS camera extension, with no phone connected.
+The release build passes with no compiler warnings, and so do the local signature, property list and build script checks. `--diagnose` finds the bundled server and the approved OBS camera extension.
 
-A synthetic HEVC sample decoded all 12 frames at 3840x2160 using hardware decoding. This checks the decoder, not sustained capture performance. Unknown command arguments and malformed probe input exited with code 1.
+A synthetic HEVC sample decodes all 12 frames at 3840x2160 with hardware decoding. That checks the decoder, not sustained capture. Unknown command arguments and malformed probe input exit with code 1.
 
-USB camera capture, virtual-camera publishing, and preview resizing still need an interactive check with the phone. The headless checks did not start a camera sender or a preview.
-
-Menu items and windows open through System Events, so the menu, Setup, Settings and Image Settings have been checked on screen without the phone.
+The off-screen dev instance with an Android emulator and `scripts/fault-adb` (see [docs/dev-automation.md](docs/dev-automation.md)) has driven Start, Stop and Quit (also with adb hung), a cable pull and return, Start when plugged in, the heat warning and cool-down switch, lens switching with a lens that can't run the mode, zoom and flashlight, Image Settings, the preview, a second phone, a phone that hasn't allowed debugging or is offline, another app holding the camera, modes the camera can't run, adb not working, and cleanup after `kill -9`, with the virtual camera fed from the emulator.
 
 ## Dependencies and references
 

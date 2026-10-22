@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""A stand-in for adb that runs the real one and bends what it says, to drive the app's error paths without a phone.
+
+Point the app at it with ADB=/path/to/scripts/fault-adb (the dev instance passes its environment on). It reads its
+rules from $FAULT_ADB_FAULTS (default /tmp/fault-adb/faults) on every call, and on every change while
+`track-devices` runs, so editing the file mid-run plugs, unplugs and breaks things live. Every call is appended to
+calls.log next to the rules file. See docs/dev-automation.md.
+
+Rules, one per line (# starts a comment):
+  usb SERIAL                list SERIAL as a USB phone (adds usb:1-1), so an emulator passes the app's USB filter
+  hide SERIAL               leave SERIAL out of every listing and fail commands to it, like a pulled cable; a SERIAL
+                            that also has a `usb` rule loses its forwards, as adb drops them when a phone goes away
+  device SERIAL STATUS [k:v ...]   add a listing line, such as a second phone or one that hasn't allowed debugging
+  alias FAKE REAL           run commands for FAKE (a `device` line) against REAL
+  hang PATTERN              a call whose arguments contain PATTERN never answers
+  delay SECONDS PATTERN     a call whose arguments contain PATTERN waits first
+  fail EXIT PATTERN | TEXT  a call whose arguments contain PATTERN prints TEXT and exits EXIT
+  server-error TEXT         the phone server prints "[server] ERROR: TEXT" and exits, as when a camera won't open
+  track-exit                track-devices fails at once ("cannot connect to daemon"), and a running one ends
+"""
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+REAL = os.environ.get("FAULT_ADB_REAL") or os.path.expanduser("~/Library/Android/sdk/platform-tools/adb")
+FAULTS = os.environ.get("FAULT_ADB_FAULTS", "/tmp/fault-adb/faults")
+LOG = os.path.join(os.path.dirname(FAULTS), "calls.log")
+
+
+def rules():
+    try:
+        text = open(FAULTS).read()
+    except FileNotFoundError:
+        return []
+    out = []
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            word, _, rest = line.partition(" ")
+            out.append((word, rest.strip()))
+    return out
+
+
+def values(found, word):
+    return [rest for w, rest in found if w == word]
+
+
+def log(arguments, note=""):
+    try:
+        with open(LOG, "a") as handle:
+            handle.write(f"{time.strftime('%H:%M:%S')} {os.getpid()} {' '.join(arguments)}{'  # ' + note if note else ''}\n")
+    except OSError:
+        pass
+
+
+def bend_listing(text, found):
+    """Applies usb, hide and device rules to `devices -l` or `track-devices -l` text."""
+    usb, hidden = set(values(found, "usb")), set(values(found, "hide"))
+    lines, header = [], []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("List of devices"):
+            header.append(line)
+            continue
+        parts = line.split()
+        if parts[0] in hidden:
+            continue
+        if parts[0] in usb and len(parts) > 1 and not any(p.startswith("usb:") for p in parts):
+            line = " ".join([parts[0], parts[1], "usb:1-1"] + parts[2:])
+        lines.append(line)
+    lines += [d for d in values(found, "device") if d.split()[0] not in hidden]
+    body = "".join(line + "\n" for line in lines)
+    return ("\n".join(header) + "\n" + body + "\n") if header else body
+
+
+def track(arguments):
+    """Proxies the real track-devices stream, re-sending the bent list whenever the real one or the rules change."""
+    if any(w == "track-exit" for w, _ in rules()):
+        print("adb: cannot connect to daemon at tcp:5037: Connection refused", file=sys.stderr)
+        return 1
+    child = subprocess.Popen([REAL] + arguments, stdout=subprocess.PIPE)
+    latest, changed = [None], threading.Event()
+
+    def reader():
+        stream = child.stdout
+        while True:
+            size = stream.read(4)
+            if len(size) < 4:
+                break
+            latest[0] = stream.read(int(size, 16)).decode()
+            changed.set()
+        changed.set()
+
+    threading.Thread(target=reader, daemon=True).start()
+    sent, stamp, hidden = None, None, set()
+    try:
+        while True:
+            changed.wait(0.25)
+            changed.clear()
+            if child.poll() is not None and latest[0] is None:
+                return child.returncode
+            try:
+                now = os.stat(FAULTS).st_mtime_ns
+            except FileNotFoundError:
+                now = None
+            found = rules()
+            # adb drops a device's forwards when its transport goes away, so a hidden stand-in phone (a `usb` rule)
+            # loses them too. Other devices are someone else's and stay untouched.
+            for serial in (set(values(found, "hide")) & set(values(found, "usb"))) - hidden:
+                subprocess.run([REAL, "-s", serial, "forward", "--remove-all"], capture_output=True)
+            hidden = set(values(found, "hide")) & set(values(found, "usb"))
+            if any(w == "track-exit" for w, _ in found):
+                log(arguments, "track-exit")
+                return 1
+            if latest[0] is None:
+                continue
+            text = bend_listing(latest[0], found)
+            if text != sent or now != stamp:
+                if text != sent:
+                    data = text.encode()
+                    sys.stdout.buffer.write(b"%04x" % len(data) + data)
+                    sys.stdout.buffer.flush()
+                sent, stamp = text, now
+            if child.poll() is not None:
+                return child.returncode
+    except BrokenPipeError:
+        return 0
+    finally:
+        if child.poll() is None:
+            child.terminate()
+
+
+def main():
+    arguments = sys.argv[1:]
+    found = rules()
+    joined = " ".join(arguments)
+    serial = arguments[arguments.index("-s") + 1] if "-s" in arguments[:-1] else None
+
+    if serial in values(found, "hide"):
+        log(arguments, "hidden")
+        print(f"adb: device '{serial}' not found", file=sys.stderr)
+        return 1
+    for rest in values(found, "hang"):
+        if rest in joined:
+            log(arguments, "hang")
+            while True:
+                signal.pause()
+    for rest in values(found, "delay"):
+        seconds, _, pattern = rest.partition(" ")
+        if pattern in joined:
+            log(arguments, f"delay {seconds}")
+            time.sleep(float(seconds))
+    for rest in values(found, "fail"):
+        head, _, text = rest.partition("|")
+        code, _, pattern = head.strip().partition(" ")
+        if pattern.strip() in joined:
+            log(arguments, f"fail {code}")
+            print(text.strip(), file=sys.stderr)
+            return int(code)
+    errors = values(found, "server-error")
+    if errors and "com.genymobile.scrcpy.Server" in joined and "scid=" in joined:
+        log(arguments, "server-error")
+        print(f"[server] ERROR: {errors[0]}", flush=True)
+        time.sleep(0.3)
+        return 1
+    if serial:
+        aliases = dict(rest.split(None, 1) for rest in values(found, "alias"))
+        if serial in aliases:
+            arguments[arguments.index("-s") + 1] = aliases[serial]
+        elif any(d.split()[0] == serial for d in values(found, "device")):
+            status = next(d.split()[1] for d in values(found, "device") if d.split()[0] == serial)
+            log(arguments, f"fake {status}")
+            print("adb: device unauthorized." if status == "unauthorized" else f"adb: device '{serial}' not found",
+                  file=sys.stderr)
+            return 1
+    log(arguments)
+
+    if arguments[:1] == ["track-devices"]:
+        return track(arguments)
+    if arguments[:1] == ["devices"]:
+        result = subprocess.run([REAL] + arguments, capture_output=True, text=True)
+        sys.stdout.write(bend_listing(result.stdout, found))
+        sys.stderr.write(result.stderr)
+        return result.returncode
+    os.execv(REAL, [REAL] + arguments)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
