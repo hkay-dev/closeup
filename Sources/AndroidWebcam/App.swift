@@ -45,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var discoveryError: String?
     private var extensionActive = false
     private var relaunching = false
+    /// The copy before a relaunch for the OBS extension had Setup open, so this one reopens it once (see relaunchForExtension).
+    private var reopenSetup = ProcessInfo.processInfo.environment[AppDelegate.showSetupKey] == "1"
+    private static let showSetupKey = "ANDROID_WEBCAM_SHOW_SETUP"
     private var modeIndex = AppDelegate.coolModeIndex
     private let watcher = DeviceWatcher()
     private var devicesKnown = false
@@ -570,14 +573,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// so Start Webcam would fail too: open a fresh copy and quit. Once per lineage, so a device macOS never shows can't loop.
     private func relaunchForExtension() {
         let key = "ANDROID_WEBCAM_RELAUNCHED"
+        // A download or install under way would be cut off by the quit; the 3 s timer comes back here later.
         guard !capture.running, !relaunching, !DevMode.isOn, ProcessInfo.processInfo.environment[key] == nil,
+              !setup.platformTools.busy, !setup.obs.busy,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
         // Set once and never reset: the 3 s timer and the menu re-enter refreshEnvironment while the launch is pending,
         // and a launch error must not retry every 3 s.
         relaunching = true
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
-        configuration.environment = ProcessInfo.processInfo.environment.merging([key: "1"]) { $1 }
+        configuration.environment = ProcessInfo.processInfo.environment.merging(
+            [key: "1", Self.showSetupKey: shelf.isOpen("setup") ? "1" : "0"]) { $1 }
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
             guard error == nil else { return }
             DispatchQueue.main.async { NSApp.terminate(nil) }
@@ -646,8 +652,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let phone = devices.first { $0.serial == selectedSerial } ?? devices.first
         let allowed = phone.flatMap { $0.authorized ? $0 : nil }
         let debugging = Self.debuggingText(phone)
-        let obsURL = Installer.installedOBS()
-        if obsURL != nil || extensionActive { setup.obs.stepDone() }
+        // While the user drags OBS in, Finder writes under the final name, so only a copy that passes the signature
+        // check counts (checkDraggedCopy makes the installer idle once it does).
+        let obsURL = setup.obs.isWaiting ? nil : Installer.installedOBS()
+        if setup.obs.isWaiting { setup.obs.checkDraggedCopy() }
         // Without adb the phone list fails for that reason alone, which the first step already says.
         let phoneError = adbPath == nil ? nil : discoveryError
         let steps = [
@@ -695,7 +703,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func showSetupOnFirstRun() {
-        guard devicesKnown, environmentKnown, !Prefs.defaults.bool(forKey: Prefs.setupShown) else { return }
+        guard devicesKnown, environmentKnown else { return }
+        if reopenSetup {
+            reopenSetup = false
+            Prefs.defaults.set(true, forKey: Prefs.setupShown)
+            showSetup()
+            return
+        }
+        guard !Prefs.defaults.bool(forKey: Prefs.setupShown) else { return }
         Prefs.defaults.set(true, forKey: Prefs.setupShown)
         if !setup.complete { showSetup() }
     }
