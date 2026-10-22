@@ -52,7 +52,8 @@ Stop between modes; the mode menu is locked while live.
 | Live Controls over a full-screen call: ⌃⌥⌘L, lens chips, hold a zoom button, flashlight, then the call's mute shortcut | The panel opens above the call; holding zoom keeps zooming; mute still works with the panel open; ⌃⌥⌘L closes it | 90fc, rj7f |
 | Extra sharpening on the Mac | Edges get crisper | b4y5 |
 | Switch lens, then Stop and Start | The image settings stay | wpc4 |
-| Reset to Automatic | Everything goes back | |
+| Reset to Automatic | Everything goes back; under More, noise reduction and phone sharpness read Fast | 6rfn |
+| At 4K · 60, More › noise reduction and phone sharpness on High quality, then Fast | Note the fps in the menu header for each. If High quality drops frames, Fast stays the default | 6rfn |
 
 ## 4. Clap test (5 min)
 
