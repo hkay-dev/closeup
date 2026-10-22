@@ -27,7 +27,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 binary="${ANDROID_WEBCAM_APP:-$root/build/Android Webcam.app/Contents/MacOS/AndroidWebcam}"
-pointer="${XDG_CACHE_HOME:-$HOME/.cache}/android-webcam/dev-current"
+# One instance per checkout, so worktrees can each run their own.
+pointer="${XDG_CACHE_HOME:-$HOME/.cache}/android-webcam/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
 
 die() {
     echo "dev.sh: $*" >&2
