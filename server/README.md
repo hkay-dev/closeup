@@ -14,7 +14,7 @@ Server options, all optional. Unset means the camera's automatic behavior.
 | `webcam_nr` | `off`, `fast`, `high_quality` | `NOISE_REDUCTION_MODE` |
 | `webcam_edge` | `off`, `fast`, `high_quality` | `EDGE_MODE` (phone-side sharpening) |
 
-`locked` focus keeps `CONTROL_AF_MODE_CONTINUOUS_VIDEO` and sends one `CONTROL_AF_TRIGGER_START` once the continuous search has settled (`PASSIVE_FOCUSED` or `PASSIVE_UNFOCUSED`, or after 90 frames), which holds the lens where it is. Going back to `continuous` sends `CONTROL_AF_TRIGGER_CANCEL`.
+`locked` focus keeps `CONTROL_AF_MODE_CONTINUOUS_VIDEO` and sends one `CONTROL_AF_TRIGGER_START` once the continuous search has settled (`PASSIVE_FOCUSED` or `PASSIVE_UNFOCUSED`, or after 3 seconds), which holds the lens where it is. Going back to `continuous` sends `CONTROL_AF_TRIGGER_CANCEL`.
 
 A value the camera doesn't list as available goes back to the `TEMPLATE_RECORD` default and logs a warning; the session keeps running. An unknown option name or value fails at startup, like other scrcpy options.
 

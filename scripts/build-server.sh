@@ -42,11 +42,19 @@ if ! grep -qx "SCRCPY_VERSION_NAME=$version" "$build_script"; then
 fi
 
 export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+if [[ ! -f "$ANDROID_HOME/platforms/android-36/android.jar" || ! -x "$ANDROID_HOME/build-tools/36.0.0/d8" ]]; then
+    echo "ANDROID_HOME ($ANDROID_HOME) needs platforms;android-36 and build-tools;36.0.0. See README > Build." >&2
+    exit 1
+fi
 if [[ -z "${JAVA_HOME:-}" ]]; then
     JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
     if [[ ! -d "$JAVA_HOME" ]]; then
-        JAVA_HOME=$(brew --prefix openjdk@17)
+        JAVA_HOME=$(brew --prefix openjdk@17 2>/dev/null || true)
     fi
+fi
+if [[ ! -x "$JAVA_HOME/bin/javac" ]]; then
+    echo "No JDK found. Set JAVA_HOME, install Android Studio, or run: brew install openjdk@17" >&2
+    exit 1
 fi
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"

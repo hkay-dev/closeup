@@ -50,8 +50,9 @@ struct PhoneImageSettings: Codable, Equatable {
     var exposureEV: Double = 0                 // -2...2 in 1/3 steps
     var whiteBalance: WhiteBalance = .auto
     var focus: FocusMode = .continuous
-    var noiseReduction: ProcessingLevel = .highQuality
-    var sharpness: ProcessingLevel = .highQuality   // edge mode
+    // Fast, as the camera's own video template picks: high quality can cost frames at 60 fps.
+    var noiseReduction: ProcessingLevel = .fast
+    var sharpness: ProcessingLevel = .fast     // edge mode
 }
 
 enum ADB {

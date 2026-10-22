@@ -6,7 +6,7 @@ It has run live with a Galaxy S25 Ultra into a video call and a QuickTime record
 
 ## What you need
 
-- A Mac on macOS 13 or later.
+- A Mac on macOS 13 or later. Release builds run on Apple silicon and Intel Macs; only Apple silicon has been tried.
 - An Android phone on Android 12 or later, and a USB cable that carries data (some charging cables don't).
 - About 10 minutes the first time. Setup downloads the two free tools it needs for you:
   - **Android platform tools** from Google, which the Mac uses to talk to the phone (`adb`).
@@ -14,7 +14,15 @@ It has run live with a Galaxy S25 Ultra into a video call and a QuickTime record
 
 ## Get the app
 
-There's no signed download yet, so build it yourself (see [Build](#build)) or take the zipped app from a CI run or release. The app isn't notarized, so the first time you open it macOS refuses: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
+There's no signed download yet. Build it yourself (see [Build](#build)), or download `Android-Webcam.dmg` from a [release](https://github.com/hkay-dev/android-webcam/releases), open it and drag **Android Webcam** into **Applications**. Open it from Applications, not from the disk image or Downloads.
+
+The app is ad-hoc signed and not notarized, so macOS blocks the first open:
+
+1. Double-click the app. macOS says it can't check it; click **Done**.
+2. Open **System Settings › Privacy & Security**, scroll to Security and click **Open Anyway**. The button shows for about an hour after step 1.
+3. Click **Open Anyway** in the dialog that follows and enter your password.
+
+Each new version is a new unsigned build, so you do this again after an update.
 
 ## First run
 
@@ -56,19 +64,63 @@ The menu says what happened and what to do next. The common ones:
 | Call apps don't list OBS Virtual Camera | Finish step 3 of Setup, then quit and reopen the call app. |
 | The picture lags the sound | Run Check Audio Sync and set that delay on the audio in your app. |
 
+Still stuck? See [Report a problem](#report-a-problem).
+
+## Phones
+
+Any phone on Android 12 or later with a back or front camera that Android's Camera2 API can open; the app checks the version and says so on older ones. Capture modes and lenses depend on the phone: a mode it can't run shows an error, and Live Controls lists the lenses the phone reports. It has been tried live on a Galaxy S25 Ultra only, so reports from other phones help.
+
+## Report a problem
+
+Open an issue at https://github.com/hkay-dev/android-webcam/issues. In **Settings › Help**, click **Copy Diagnostics** and paste the report into the issue. It has the versions, the phone's model, the setup steps and recent errors, with serial numbers taken out.
+
+## Where files go
+
+- `~/Library/Application Support/Android Webcam/platform-tools/`: the adb that Setup downloads.
+- `~/Library/Application Support/com.harsha.android-webcam/session.json`: what the last session started, so the next launch can clean up after a crash.
+- `~/Library/Preferences/com.harsha.android-webcam.plist`: settings.
+- `~/.android/adbkey` and `adbkey.pub`: adb's key, which your phone trusts. adb writes these, and any other Android tool on the Mac shares them.
+- `/Applications/OBS.app`, if Setup installed OBS.
+- On the phone, `/data/local/tmp/android-webcam-*.jar` while the webcam runs; the app removes it.
+
+## Uninstall
+
+1. In Settings, turn off **Launch at login**, then quit the app.
+2. Stop the adb server, which keeps running after the app quits:
+   `"$HOME/Library/Application Support/Android Webcam/platform-tools/adb" kill-server`
+3. Delete the app and its files:
+   ```sh
+   rm -rf "/Applications/Android Webcam.app" "$HOME/Library/Application Support/Android Webcam" "$HOME/Library/Application Support/com.harsha.android-webcam"
+   defaults delete com.harsha.android-webcam
+   ```
+4. If you don't use OBS otherwise, drag OBS to the Trash; macOS offers to remove its camera extension too.
+5. On the phone, open **Settings › Developer options**, tap **Revoke USB debugging authorizations**, and turn off USB debugging.
+
 ## Privacy
 
 The app sends video only. It doesn't record, capture your screen or send anything to the Internet; the only downloads are the two setup tools you click. It opens the microphone only while **Check Audio Sync** runs, to time a clap, and keeps nothing. It adds a login item only if you turn on **Launch at login**.
 
 ## Build
 
-You need Xcode or the Swift toolchain. The script uses the selected Xcode; set `DEVELOPER_DIR` to use another. It builds the phone server with `scripts/build-server.sh`, which needs a JDK and the Android SDK with platform 36 and build-tools 36.0.0 (see `server/README.md`). Set `SCRCPY_SERVER_PATH` to bundle another server jar instead; its version must be `5.0.1-webcam.1`.
+You need:
+
+- Xcode 15 or later, or its Command Line Tools (`xcode-select --install`). The script uses the selected Xcode; set `DEVELOPER_DIR` to use another.
+- A JDK 17 and the Android SDK's platform 36 and build-tools 36.0.0, to build the phone server (`scripts/build-server.sh`, see `server/README.md`). Android Studio's SDK Manager installs both. Without Android Studio, with Homebrew:
+
+  ```sh
+  brew install openjdk@17 android-commandlinetools
+  export JAVA_HOME="$(brew --prefix openjdk@17)" ANDROID_HOME="$HOME/Library/Android/sdk"
+  yes | sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-36" "build-tools;36.0.0"
+  ```
+- Network access the first time: the script clones scrcpy v5.0.1 from GitHub.
+
+Set `SCRCPY_SERVER_PATH` to bundle another server jar instead; its version must be `5.0.1-webcam.1`.
 
 ```sh
 ./scripts/build-app.sh
 ```
 
-The app is written to `build/Android Webcam.app` and signed locally with an ad-hoc signature. CI builds it on every push and publishes a zip on `v*` tags.
+The app is written to `build/Android Webcam.app` and signed locally with an ad-hoc signature. `UNIVERSAL=1` builds one binary for Apple silicon and Intel, and `scripts/make-dmg.sh` packs the app into `build/Android-Webcam.dmg`. CI builds on pushes to `main` and pull requests, and a `v*` tag publishes the DMG and a zip as a GitHub release, stamped with the tag's version.
 
 ## How it works
 
@@ -78,7 +130,7 @@ The app learns about phones from one long-running `adb track-devices -l` client,
 
 The app owns its temporary server file, forwarding entry and child process. Stop and Quit clean up only those, and the next launch removes what a killed session left. It never stops the shared ADB server.
 
-The app looks for `adb` in `$ADB`, `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`, the copy Setup downloads (`~/Library/Application Support/Android Webcam/platform-tools`), `/opt/homebrew/bin` and `/usr/local/bin`.
+The app looks for `adb` in `$ADB`, `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`, the copy Setup downloads (`~/Library/Application Support/Android Webcam/platform-tools`), `/opt/homebrew/bin` and `/usr/local/bin`. The three environment variables only count when you start the app from a shell (as the headless checks do); opened from Finder it uses the fixed paths.
 
 ### Modes
 

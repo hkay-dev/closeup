@@ -50,3 +50,5 @@ summary: One dated line per decision and why, newest last.
 - 2026-10-22: The cool-down restart keeps the call's live clock, and a drop during it shows the reconnect veil, since it's the same call. kata:android-webcam#8mh4
 - 2026-10-22: Live Controls never becomes the key window (`becomesKeyOnlyIfNeeded`), so a call's mute and push-to-talk keys keep working while it's open; ⌃⌥⌘L (Carbon hot key, no Accessibility permission) opens and closes it. kata:android-webcam#rj7f
 - 2026-10-22: Copy Diagnostics builds its log from an in-process tee of stderr (last 200 lines) and takes out every serial seen this run, `adb -s` arguments, adb's `device '...'` wording, forward lines, mDNS names and the home path. kata:android-webcam#rj7f
+- 2026-10-22: Phone noise reduction and sharpening default to Fast, the camera's own video choice, instead of High quality, which Camera2 allows to lower the frame rate; Reset to Automatic returns to Fast. kata:android-webcam#6rfn
+- 2026-10-22: Releases are universal (arm64 and x86_64), version-stamped from the `v*` tag, and ship as a drag-to-Applications DMG plus a zip; local builds stay this Mac's chip. kata:android-webcam#6rfn
