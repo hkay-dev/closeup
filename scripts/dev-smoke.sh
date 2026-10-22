@@ -68,7 +68,7 @@ controls="$("$dev" text controls)"
 say "live controls text:"
 jq -r '.text[] | "  " + .' <<<"$controls"
 ok_if "Live Controls shows Reset to Automatic" jq -e '.text | any(test("Reset to Automatic"))' <<<"$controls"
-ok_if "Live Controls says what to do before lenses work" jq -e '.text | any(test("Start the webcam|once the picture is live|Hold a zoom button"))' <<<"$controls"
+ok_if "Live Controls says what to do before lenses work" jq -e '.text | any(test("Start the webcam|Plug in your phone|once the picture is live|Hold a zoom button"))' <<<"$controls"
 "$dev" choose "Check Audio Sync" >/dev/null
 sync="$("$dev" text sync)"
 say "check audio sync text:"

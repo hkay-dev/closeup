@@ -59,7 +59,7 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 | `ctl OP key=value key:=json` | Any operation. |
 | `smoke [DIR]` | The whole journey below, with checks. |
 
-`WINDOW` is the id from `windows`. Sliders and segmented pickers in Live Controls can be read with `text` and `tree`; `press` covers buttons, check boxes, radio buttons and disclosure triangles. In Live Controls that's the lens chips (by lens name, such as `Front`), `Zoom in`, `Zoom out`, `Flashlight`, the white balance chips (`Auto white balance`, `Daylight`, `Cloudy`, `Incandescent`, `Fluorescent`), `Continuous focus`, `Locked focus`, `More` and `Reset to Automatic`. A press is one click, so it can't show the zoom buttons repeating while held.
+`WINDOW` is the id from `windows`. Sliders and segmented pickers in Live Controls can be read with `text` and `tree`; `press` covers buttons, check boxes, radio buttons and disclosure triangles. In Live Controls that's `Start Webcam` or `Finish Setup…` (shown only while the webcam isn't running; there's no Stop there), the lens chips (by lens name, such as `Front`), `Zoom in`, `Zoom out`, `Flashlight`, the white balance chips (`Auto white balance`, `Daylight`, `Cloudy`, `Incandescent`, `Fluorescent`), `Continuous focus`, `Locked focus`, `More` and `Reset to Automatic`. A press is one click, so it can't show the zoom buttons repeating while held.
 
 ## Smoke journey
 

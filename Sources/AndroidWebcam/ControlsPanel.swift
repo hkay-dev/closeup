@@ -13,9 +13,16 @@ struct LiveControlsState: Equatable {
     var lensID: String?
     var lensNote: String?       // why the last lens pick went back
     var running = false
+    var stopping = false
+    var phoneSelected = false
     var canControl = false      // live and not switching lenses
     var switching = false
     var torchOn = false
+    /// The panel's own way to start: Start Webcam when the menu's would be enabled, Finish Setup while setup isn't
+    /// done, none while running. It never offers Stop, which is too easy to hit mid-call.
+    var start: StartAction?
+
+    enum StartAction: Equatable { case start, finishSetup }
 }
 
 final class LiveControlsModel: ObservableObject {
@@ -26,6 +33,8 @@ final class LiveControlsModel: ObservableObject {
     var zoomIn: () -> Void = {}
     var zoomOut: () -> Void = {}
     var toggleTorch: () -> Void = {}
+    /// The menu's main action: starts the webcam, or opens Setup while setup isn't done.
+    var mainAction: () -> Void = {}
 }
 
 /// A floating HUD panel for changing the picture during a call. It floats over full-screen call apps and every Space,
@@ -52,8 +61,10 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         picture.setAccessibilityElement(false)
     }
 
-    func show() {
-        if let panel { bringForward(panel); return }
+    /// Opens the panel, the first time near the top right of `screen` (the status item's), without taking the
+    /// call app's place as the active app: a nonactivating panel still gets keys for its sliders and Esc.
+    func show(on screen: NSScreen?) {
+        if let panel { present(panel); return }
         let host = NSHostingController(rootView: LiveControlsView(model: model, store: store, picture: picture))
         host.sizingOptions = [.preferredContentSize]
         let panel = HUDPanel(contentRect: NSRect(x: 0, y: 0, width: LiveControlsView.width, height: 600),
@@ -82,13 +93,17 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         if DevMode.isOn {
             panel.center()
         } else {
-            if !panel.setFrameUsingName("LiveControls") { placeTopRight(panel) }
+            // A saved spot on a display that's gone now would leave the panel where nobody can see it.
+            if !panel.setFrameUsingName("LiveControls")
+                || !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(panel.frame) }) {
+                placeTopRight(panel, on: screen)
+            }
             panel.setFrameAutosaveName("LiveControls")
         }
         self.panel = panel
         onOpenChange(true)
         model.appeared = Motion.reduced
-        bringForward(panel)
+        present(panel)
         guard !Motion.reduced else { return }
         // The first frame goes out with the content clear, then it fades and grows in.
         DispatchQueue.main.async { [weak self] in
@@ -99,9 +114,15 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
 
     func close() { panel?.close() }
 
+    private func present(_ panel: NSPanel) {
+        if DevMode.isOn { DevMode.park(panel); return }
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
     /// Near the menu bar's right end, where the status item is, out of the way of a call's faces.
-    private func placeTopRight(_ panel: NSPanel) {
-        guard let screen = NSScreen.main else { panel.center(); return }
+    private func placeTopRight(_ panel: NSPanel, on screen: NSScreen?) {
+        guard let screen = screen ?? NSScreen.main else { panel.center(); return }
         let visible = screen.visibleFrame
         panel.setFrameTopLeftPoint(NSPoint(x: visible.maxX - panel.frame.width - 16, y: visible.maxY - 12))
     }
@@ -149,6 +170,9 @@ struct LiveControlsView: View {
         VStack(spacing: 12) {
             livePicture
             statusLines
+            if let start = state.start {
+                startButton(start).transition(Motion.swap)
+            }
             cameraModule
             pictureModule
             Text("Call apps list this camera as OBS Virtual Camera.")
@@ -157,6 +181,7 @@ struct LiveControlsView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .animation(change, value: state.start)
         .padding(.horizontal, 16)
         .padding(.top, 2)
         .padding(.bottom, 14)
@@ -229,7 +254,7 @@ struct LiveControlsView: View {
     private var cameraModule: some View {
         Module {
             if state.lenses.isEmpty {
-                Text("This phone hasn't listed its lenses yet.")
+                Text(state.phoneSelected ? "This phone hasn't listed its lenses yet." : "No phone is selected.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -249,13 +274,13 @@ struct LiveControlsView: View {
             }
             HStack(spacing: 8) {
                 HStack(spacing: 0) {
-                    RepeatButton(label: "Zoom out", symbol: "minus", action: model.zoomOut)
+                    RepeatButton(label: "Zoom out", symbol: "minus", active: model.appeared, action: model.zoomOut)
                     Text("Zoom")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(state.canControl ? 0.85 : 0.4))
                         .frame(width: 48)
                         .accessibilityHidden(true)
-                    RepeatButton(label: "Zoom in", symbol: "plus", action: model.zoomIn)
+                    RepeatButton(label: "Zoom in", symbol: "plus", active: model.appeared, action: model.zoomIn)
                 }
                 .padding(2)
                 .background(Capsule().fill(Color.white.opacity(0.08)))
@@ -287,10 +312,29 @@ struct LiveControlsView: View {
 
     private var cameraHint: String {
         if let note = state.lensNote { return note }
+        if state.stopping { return "Stopping the webcam." }
         if state.switching { return "Switching camera. Your call keeps the camera." }
         if state.canControl { return "Hold a zoom button to keep zooming." }
         if state.running { return "Lens, zoom and flashlight work once the picture is live." }
+        if !state.phoneSelected { return "Plug in your phone, then start the webcam." }
         return "Start the webcam to switch lenses."
+    }
+
+    /// Start Webcam, or Finish Setup while setup isn't done: the menu's main action, without its Stop.
+    private func startButton(_ action: LiveControlsState.StartAction) -> some View {
+        let title = action == .start ? "Start Webcam" : "Finish Setup…"
+        return Button(action: model.mainAction) {
+            Label(title, systemImage: action == .start ? "play.fill" : "checklist")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(action == .start ? Color.white : Color.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(Capsule().fill(action == .start ? Color.accentColor : Color.white))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PressStyle())
+        .accessibilityLabel(title)
+        .help(action == .start ? "Start sending the phone's camera to call apps" : "Open Setup to finish the steps left")
     }
 
     // MARK: Picture settings
@@ -363,6 +407,7 @@ struct LiveControlsView: View {
                     .labelsHidden()
                     .controlSize(.small)
                     .accessibilityLabel("Extra sharpening on the Mac")
+                    .accessibilityValue(store.macSharpness == 0 ? "Off" : String(format: "%.0f percent", store.macSharpness * 100))
             }
 
             DisclosureGroup(isExpanded: $more.value) {
@@ -549,6 +594,8 @@ private struct PressStyle: ButtonStyle {
 private struct RepeatButton: View {
     let label: String
     let symbol: String
+    /// False once the panel closes, which ends a hold in progress.
+    let active: Bool
     let action: () -> Void
     @StateObject private var repeater = Repeater()
     @Environment(\.isEnabled) private var enabled
@@ -566,6 +613,9 @@ private struct RepeatButton: View {
         .buttonStyle(RepeatStyle(repeater: repeater, action: action))
         .accessibilityLabel(label)
         .help(label)
+        // A hold ends when the button turns off (the picture stopped being live) or the panel goes away.
+        .onChange(of: enabled && active) { on in if !on { repeater.stop() } }
+        .onDisappear { repeater.stop() }
     }
 }
 
@@ -587,9 +637,15 @@ private final class Repeater: ObservableObject {
     private var timer: Timer?
     private var repeated = false
 
-    func pressed(_ down: Bool, action: @escaping () -> Void) {
+    deinit { timer?.invalidate() }
+
+    func stop() {
         timer?.invalidate()
         timer = nil
+    }
+
+    func pressed(_ down: Bool, action: @escaping () -> Void) {
+        stop()
         guard down else { return }
         repeated = false
         let start = Timer(timeInterval: 0.4, repeats: false) { [weak self] _ in
@@ -684,10 +740,22 @@ private struct LivePill: View {
         .padding(.horizontal, 8)
         .frame(height: 20)
         .background(Capsule().fill(Color.black.opacity(0.55)))
-        .onAppear {
-            guard !Motion.reduced else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim.value = true }
+        .onAppear(perform: pulse)
+        // Reduce Motion can change while the pill shows.
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
+            pulse()
         }
+    }
+
+    private func pulse() {
+        guard !Motion.reduced else {
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { dim.value = false }
+            return
+        }
+        guard !dim.value else { return }
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim.value = true }
     }
 }
 
