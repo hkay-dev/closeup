@@ -409,6 +409,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         state.lensID = running ? runLensID ?? "0" : lenses.contains { $0.id == saved } ? saved : "0"
         state.lensNote = shownLensNote
         state.running = running
+        state.stopping = running && stopRequested
+        state.phoneSelected = serial != nil
+        // The same conditions as the menu's main action, without its Stop.
+        state.start = running ? nil
+            : !setup.complete ? .finishSetup
+            : devices.contains { $0.serial == selectedSerial && $0.authorized } ? .start : nil
         state.canControl = live && !switchingLens && !stopRequested
         state.switching = switchingLens
         state.torchOn = torchOn
@@ -968,8 +974,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         model.zoomIn = { [weak self] in self?.zoomInChosen() }
         model.zoomOut = { [weak self] in self?.zoomOutChosen() }
         model.toggleTorch = { [weak self] in self?.toggleFlashlight() }
+        // Start or Finish Setup only: the panel never stops the webcam, even if it started since the press.
+        model.mainAction = { [weak self] in
+            guard let self, !self.capture.running else { return }
+            self.mainActionChosen()
+        }
         controls.onOpenChange = { [weak self] open in self?.controlsOpenChanged(open) }
-        controls.show()
+        controls.show(on: statusItem?.button?.window?.screen ?? NSScreen.main)
     }
 
     /// The panel gets frames and a ticking clock only while it's open.
