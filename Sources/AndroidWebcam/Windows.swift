@@ -504,6 +504,8 @@ private struct InstallerControls: View {
                     .progressViewStyle(.linear)
                     // Bytes arrive many times a second; an inherited spring left the bar well behind the numbers.
                     .transaction { $0.animation = nil }
+                    // A busy bar doesn't turn into a filling one in place once the size is known; make it a new bar.
+                    .id(fraction == nil)
                     .accessibilityLabel(text)
                 if installer.canCancel {
                     Button("Cancel") { installer.cancel() }.controlSize(.small)
