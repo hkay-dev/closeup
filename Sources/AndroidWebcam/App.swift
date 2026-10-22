@@ -1051,9 +1051,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func setShortcut(_ on: Bool) {
-        settingsModel.shortcutProblem = hotkey.set(on)
-        controlsItem.keyEquivalent = on ? GlobalHotkey.keyEquivalent : ""
-        controlsItem.keyEquivalentModifierMask = on ? GlobalHotkey.modifiers : []
+        let problem = hotkey.set(on)
+        settingsModel.shortcutProblem = problem
+        // The menu shows the keys only when they work.
+        let shown = on && problem == nil
+        controlsItem.keyEquivalent = shown ? GlobalHotkey.keyEquivalent : ""
+        controlsItem.keyEquivalentModifierMask = shown ? GlobalHotkey.modifiers : []
     }
 
     @objc private func showSettings() {

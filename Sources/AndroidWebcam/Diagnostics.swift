@@ -136,7 +136,7 @@ enum Diagnostics {
         out = out.replacingOccurrences(of: #"adb-[^\s.]+\._adb-tls-connect\._tcp\.?"#, with: "<serial>", options: .regularExpression)
         // adb's own wording for a serial it can't find, and forward --list lines.
         out = out.replacingOccurrences(of: #"device '(?!<serial>)[^']+'"#, with: "device '<serial>'", options: .regularExpression)
-        out = out.replacingOccurrences(of: #"(?m)^(?!<serial>)\S+(?= tcp:\d+ localabstract:)"#, with: "<serial>", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?<=^|\s)(?!<serial>)[^\s<]+(?= tcp:\d+ localabstract:)"#, with: "<serial>", options: [.regularExpression])
         return out.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 
