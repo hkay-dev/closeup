@@ -6,6 +6,7 @@ covers:
   - Sources/AndroidWebcam/DevAccessibility.swift
   - Sources/AndroidWebcam/App.swift
   - Sources/AndroidWebcam/Windows.swift
+  - Sources/AndroidWebcam/Installer.swift
   - scripts/dev.sh
   - scripts/dev-ctl.py
   - scripts/dev-smoke.sh
@@ -29,7 +30,9 @@ The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute dir
 | Menu bar | A status item | None at all. A hidden status item would still be saved in the real app's defaults, so none is created. The menu is the same `NSMenu`, read and chosen through the socket. |
 | Windows | Brought forward and activated | Parked one level below the desktop (`CGWindowLevelForKey(.desktopWindow) - 1`) with `orderFrontRegardless`. The wallpaper covers them, the app never activates, nothing takes focus. The Preview window skips its saved frame, so no `NSWindow Frame Preview` lands in the real defaults. |
 | Notifications | macOS banners | Recorded, not posted (`effects`). |
-| Buttons that act outside the app | Copy Command, Open OBS, Get Platform Tools, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch | Recorded, not done: no pasteboard write, no URL opened, no login item registered, no app quit. |
+| Buttons that act outside the app | Open OBS, About platform tools, Get OBS from obsproject.com, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch | Recorded, not done: no URL opened, no login item registered, no app quit. |
+| Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
+| A Mac with nothing installed | | `ANDROID_WEBCAM_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
 | OBS extension relaunch | `relaunchForExtension` opens a fresh copy and quits | Skipped. |
 | Session record | `~/Library/Application Support/com.harsha.android-webcam/session.json` | `<dir>/session.json`, so the dev instance never cleans up after the real app's phone session. |
 
@@ -41,12 +44,12 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 | --- | --- |
 | `start [KEY=VALUE ...]` | Starts the instance in the background, waits for the first setup check, prints its directory. Later commands find it through `ANDROID_WEBCAM_DEV_DIR` or the directory `start` last printed. `KEY=VALUE` (a string) or `KEY:=JSON` seeds its defaults before launch through `<dir>/seed.json`; arrays and objects are stored as JSON data, as the app saves them. For example `start lensID=1 phoneSerial=emulator-5920 startOnPlugIn:=true 'lenses.emulator-5920:=[{"id":"0","label":"Back · Main","facing":"back"},{"id":"1","label":"Front","facing":"front"}]'`. |
 | `stop` | Chooses Quit, waits for the process, removes the directory and the dev defaults. |
-| `state` | `header` (the lines the menu header shows, such as `3 of 5 setup steps done` and `Next: plug in your phone with a USB cable.`), `menu`, `windows`, `ready`. |
+| `state` | `header` (the lines the menu header shows, such as `3 of 6 setup steps done` and `Next: plug in your phone with a USB cable.`), `menu`, `windows`, `ready`. |
 | `menu` | Header and menu items: title, enabled, hidden, check state, key, submenus. |
 | `choose TITLE` | Chooses an item as a click would. Matches the full title, the title without its ellipsis (`Settings`), a unique prefix (`Quit`), or a submenu path (`Capture Mode/1080p / 60 fps`). `Setup` matches Finish Setup…. Refuses an item that is missing, hidden or disabled and says why, with the header. Reply: the item, the header after, open windows, effects. |
 | `open WINDOW` / `close WINDOW` | `setup`, `settings`, `image`, `sync` or `preview`. Setup is only in the menu as Finish Setup… while a step is open, so `open setup` is the way in once everything is done. |
 | `windows` | Open windows: `id`, title, `windowNumber`, `level`, `parked`, frame. |
-| `text WINDOW` | What the window shows, one line per element. Controls read `[CheckBox] Notifications = 1` (1 is on), `[Button] Reset to Automatic`, `[DisclosureTriangle] Show me how = 0`. Step marks read `[Image] Selected` for done and a circle name for pending. |
+| `text WINDOW` | What the window shows, one line per element. Controls read `[CheckBox] Notifications = 1` (1 is on), `[Button] Reset to Automatic`, `[DisclosureTriangle] Show me how = 0`. Each Setup step starts with its group's label, such as `Step 1, Get Android platform tools, done` (or `do this next`, `not done yet`). |
 | `tree WINDOW` | The accessibility tree as JSON (role, label, value, help, enabled). |
 | `press WINDOW LABEL` | Presses the one enabled control with that label (exact, then case-blind, then a part of it); says which controls exist when none or several match. Reply: what was pressed and the window's text afterwards. |
 | `shot WINDOW PATH` | Saves the window as a PNG with `screencapture -x -o -l <windowNumber>`; if that comes back empty it draws the window's own view and says so under `notes`. |

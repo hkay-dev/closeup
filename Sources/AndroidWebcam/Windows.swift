@@ -91,30 +91,29 @@ final class WindowShelf: NSObject, NSWindowDelegate {
 
 /// A button on a pending setup step that does the step, or most of it.
 enum SetupAction: Hashable {
-    case copy(String)                   // a Terminal command
     case open(String, URL)              // a button title and a web page or an app
     case loginItems                     // System Settings > General > Login Items & Extensions
     case quit(String, bundleID: String)
+    case install(String, Installer)     // downloads and installs, in the dev instance too (into its own directory)
 
     var title: String {
         switch self {
-        case .copy: "Copy Command"
         case let .open(title, _): title
         case .loginItems: "Open Login Items & Extensions"
         case let .quit(title, _): title
+        case let .install(title, _): title
         }
     }
 
     func perform() {
+        if case let .install(_, installer) = self { installer.start(); return }
         if DevMode.isOn { DevMode.record("setup-action", title); return }
         switch self {
-        case let .copy(command):
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(command, forType: .string)
         case let .open(_, url): NSWorkspace.shared.open(url)
         case .loginItems: SMAppService.openSystemSettingsLoginItems()
         case let .quit(_, bundleID):
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) { app.terminate() }
+        case .install: break
         }
     }
 }
@@ -125,11 +124,18 @@ struct SetupStep: Identifiable, Equatable {
     let done: Bool
     let help: String
     let next: String    // the header's "Next:" line while this step is pending
-    var actions: [SetupAction] = []
+    var actions: [SetupAction] = []     // the first is the step's main button
+    var howTo: [String] = []            // numbered steps under the help while pending
+    var howToFolded = false             // behind a "Show me how" disclosure
+    var note: String? = nil             // a small line under the buttons
+    var link: SetupAction? = nil        // a small link after the note
+    var installer: Installer? = nil     // shows its download in place of the buttons while it runs
 }
 
 final class SetupModel: ObservableObject {
     @Published var steps: [SetupStep] = []
+    let platformTools = Installer(.platformTools)
+    let obs = Installer(.obs)
     var doneCount: Int { steps.filter(\.done).count }
     var nextStep: SetupStep? { steps.first { !$0.done } }
     var complete: Bool { !steps.isEmpty && nextStep == nil }
@@ -142,99 +148,244 @@ final class StateBox<Value>: ObservableObject {
     init(_ value: Value) { self.value = value }
 }
 
+/// The springs Setup moves with, from swift-motion's defaults. Off under Reduce Motion.
+private let setupSpring = Animation.spring(response: 0.38, dampingFraction: 0.9)
+
 struct SetupView: View {
     @ObservedObject var model: SetupModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var copied = StateBox<SetupAction?>(nil)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if model.complete {
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundStyle(.green)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("All set").font(.title3.weight(.semibold))
-                        Text("Start the webcam, then pick OBS Virtual Camera in your call app.")
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        VStack(alignment: .leading, spacing: 18) {
+            hero
+            VStack(spacing: 8) {
+                ForEach(Array(model.steps.enumerated()), id: \.element.id) { index, step in
+                    SetupStepCard(number: index + 1, step: step,
+                                  mark: step.done ? .done : step.id == model.nextStep?.id ? .next : .later)
                 }
-                .accessibilityElement(children: .combine)
-                .transition(.opacity)
-            } else {
-                Text("\(appName) needs these before it can send your phone's camera to the Mac.")
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(model.steps) { step in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    mark(step)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(step.title).fontWeight(step.id == model.nextStep?.id ? .semibold : .regular)
-                        Text(step.help).font(.callout).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                        if !step.done, !step.actions.isEmpty {
-                            HStack(spacing: 8) {
-                                ForEach(step.actions, id: \.self) { action in
-                                    Button(copied.value == action ? "Copied" : action.title) { run(action) }
-                                }
-                            }
-                            .controlSize(.small)
-                            .padding(.top, 3)
-                        }
-                        if step.id == "debugging", !step.done {
-                            DisclosureGroup("Show me how") {
-                                Text("""
-                                    1. On the phone, open Settings > About phone (on Samsung, then Software information) \
-                                    and tap Build number seven times. Developer options appear.
-                                    2. Open Settings > Developer options and turn on USB debugging.
-                                    3. Plug the phone into the Mac. When the phone asks "Allow USB debugging?", \
-                                    tick "Always allow from this computer" and tap Allow.
-                                    """)
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.top, 4)
-                            }
-                            .font(.callout)
-                        }
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityValue(step.done ? "Done" : "Not done")
-            }
-            HStack {
-                Text("This list checks itself every few seconds.").font(.footnote).foregroundStyle(.secondary)
+            HStack(alignment: .center) {
+                Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if model.complete {
                     Button("Start Webcam") { model.start() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
         }
-        .padding(20)
-        .frame(width: 440)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.steps)
+        .padding(22)
+        .frame(width: 470)
+        .animation(reduceMotion ? nil : setupSpring, value: model.steps)
     }
 
-    private func run(_ action: SetupAction) {
-        action.perform()
-        guard case .copy = action else { return }
-        copied.value = action
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied.value == action { copied.value = nil } }
-    }
-
-    @ViewBuilder private func mark(_ step: SetupStep) -> some View {
-        if step.done {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        } else if step.id == model.nextStep?.id {
-            Image(systemName: "smallcircle.filled.circle").foregroundStyle(Color.accentColor)
-        } else {
-            Image(systemName: "circle").foregroundStyle(.secondary)
+    private var hero: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 60, height: 60)
+                .overlay(alignment: .bottomTrailing) {
+                    if model.complete {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white, .green)
+                            .offset(x: 3, y: 3)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.complete ? "All set" : "Set up \(appName)")
+                    .font(.title2.weight(.semibold))
+                Text(model.complete ? "In your call app, choose OBS Virtual Camera as the camera."
+                                    : "Use your Android phone's camera as your Mac's webcam.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !model.complete, !model.steps.isEmpty {
+                    Text("\(model.doneCount) of \(model.steps.count) steps done")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
+    }
+}
+
+/// One numbered step: done (a check, its result), next (open, with its buttons) or later (its title and what it's for).
+private struct SetupStepCard: View {
+    enum Mark { case done, next, later }
+
+    let number: Int
+    let step: SetupStep
+    let mark: Mark
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            badge
+            VStack(alignment: .leading, spacing: 6) {
+                Text(step.title)
+                    .font(.body.weight(mark == .later ? .regular : .semibold))
+                    .foregroundStyle(mark == .done ? .secondary : .primary)
+                Text(step.help)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                if mark != .done { pending }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, mark == .next ? 14 : 10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(fill))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(mark == .next ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.06), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        // A group's value isn't read out, so the state goes in its label.
+        .accessibilityLabel("Step \(number), \(step.title), \(mark == .done ? "done" : mark == .next ? "do this next" : "not done yet")")
+    }
+
+    private var fill: Color {
+        switch mark {
+        case .next: Color.accentColor.opacity(0.08)
+        case .done: Color.primary.opacity(0.025)
+        case .later: Color.primary.opacity(0.04)
+        }
+    }
+
+    private var badge: some View {
+        ZStack {
+            switch mark {
+            case .done:
+                Circle().fill(Color.green)
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+            case .next:
+                Circle().fill(Color.accentColor)
+                Text("\(number)").font(.system(size: 12, weight: .bold).monospacedDigit()).foregroundStyle(.white)
+            case .later:
+                Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
+                Text("\(number)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 24, height: 24)
+        .accessibilityHidden(true)
+    }
+
+    /// The how-to, buttons and note of a step that isn't done. A later step keeps only a download that's under way.
+    @ViewBuilder private var pending: some View {
+        if mark == .next, !step.howTo.isEmpty {
+            if step.howToFolded {
+                DisclosureGroup("Show me how") { howTo.padding(.top, 4) }
+                    .font(.callout)
+            } else {
+                howTo
+            }
+        }
+        if let installer = step.installer {
+            InstallerControls(installer: installer, actions: step.actions, showIdle: mark == .next)
+                .padding(.top, 4)
+        } else if mark == .next, !step.actions.isEmpty {
+            SetupButtons(actions: step.actions).padding(.top, 4)
+        }
+        if mark == .next, step.note != nil || step.link != nil {
+            HStack(spacing: 4) {
+                if let note = step.note { Text(note) }
+                if let link = step.link {
+                    Button(link.title) { link.perform() }.buttonStyle(.link)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var howTo: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(step.howTo.enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(index + 1).").monospacedDigit().foregroundStyle(.secondary)
+                    Text(line).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .font(.callout)
+    }
+}
+
+/// A step's buttons: the first is the main one.
+private struct SetupButtons: View {
+    let actions: [SetupAction]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(actions.enumerated()), id: \.element) { index, action in
+                if index == 0 {
+                    Button(action.title) { action.perform() }.buttonStyle(.borderedProminent)
+                } else {
+                    Button(action.title) { action.perform() }
+                }
+            }
+        }
+    }
+}
+
+/// A download step's buttons, or its progress bar while it runs, or what went wrong and Try Again.
+private struct InstallerControls: View {
+    @ObservedObject var installer: Installer
+    let actions: [SetupAction]
+    let showIdle: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            switch installer.phase {
+            case .idle:
+                if showIdle { SetupButtons(actions: actions) }
+            case let .downloading(received, total):
+                progress(total > 0 ? Double(received) / Double(total) : nil,
+                         total > 0 ? "Downloading, \(Self.size(received)) of \(Self.size(total))" : "Downloading…")
+            case let .installing(text):
+                progress(nil, text)
+            case let .failed(message):
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
+                }
+            case let .waiting(text):
+                Label(text, systemImage: "hand.point.right.fill")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .animation(reduceMotion ? nil : setupSpring, value: installer.phase)
+    }
+
+    private func progress(_ fraction: Double?, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel(text)
+                if installer.canCancel {
+                    Button("Cancel") { installer.cancel() }.controlSize(.small)
+                }
+            }
+            Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .transition(.opacity)
+    }
+
+    private static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 
