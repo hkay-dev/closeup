@@ -361,9 +361,12 @@ private struct InstallerControls: View {
                     SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
                 }
             case let .waiting(text):
-                Label(text, systemImage: "hand.point.right.fill")
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(text, systemImage: "hand.point.right.fill")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
+                }
             }
         }
         .animation(reduceMotion ? nil : setupSpring, value: installer.phase)

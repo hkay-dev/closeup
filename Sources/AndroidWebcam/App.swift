@@ -241,6 +241,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationWillTerminate(_ notification: Notification) {
         watcher.stop()
+        // An OBS image left mounted for the drag, or mounted by an install that's still running.
+        Installer.cleanUp()
         if DevMode.isOn { devControl?.stop(); DevMode.cleanUp() }
     }
 
@@ -564,6 +566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let allowed = phone.flatMap { $0.authorized ? $0 : nil }
         let debugging = Self.debuggingText(phone)
         let obsURL = Installer.installedOBS()
+        if obsURL != nil || extensionActive { setup.obs.stepDone() }
         // Without adb the phone list fails for that reason alone, which the first step already says.
         let phoneError = adbPath == nil ? nil : discoveryError
         let steps = [
