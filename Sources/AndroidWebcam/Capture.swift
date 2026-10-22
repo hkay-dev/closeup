@@ -58,21 +58,24 @@ enum ADB {
     private static let lookupLock = NSLock()
     private static var found: URL?
 
-    /// The first executable adb among the usual install locations, cached once found.
+    /// The first executable adb among the usual install locations, cached once found. The copy Setup downloads comes
+    /// after the Android SDK and before Homebrew.
     static func executable() throws -> URL {
         lookupLock.lock(); defer { lookupLock.unlock() }
         if let found, FileManager.default.isExecutableFile(atPath: found.path) { return found }
         let environment = ProcessInfo.processInfo.environment
-        let candidates = [
+        let downloaded = Installer.platformToolsDirectory.appendingPathComponent("adb").path
+        let candidates: [String?] = Installer.bareMac ? [downloaded] : [
             environment["ADB"],
             environment["ANDROID_HOME"].map { "\($0)/platform-tools/adb" },
             environment["ANDROID_SDK_ROOT"].map { "\($0)/platform-tools/adb" },
             "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb",
+            downloaded,
             "/opt/homebrew/bin/adb",
             "/usr/local/bin/adb"
         ]
         guard let path = candidates.compactMap({ $0 }).first(where: { !$0.isEmpty && FileManager.default.isExecutableFile(atPath: $0) }) else {
-            throw WebcamError(message: "Install Android platform tools, for example with brew install android-platform-tools.")
+            throw WebcamError(message: "Android platform tools aren't on this Mac yet. Open Setup from the menu and click Download Platform Tools.")
         }
         found = URL(fileURLWithPath: path)
         return found!

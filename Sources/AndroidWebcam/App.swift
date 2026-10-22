@@ -162,6 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if !self.capture.running { self.mainActionChosen() }
             self.shelf.close("setup")
         }
+        // A finished download shows up in Setup at once rather than at the next 3 s check.
+        setup.platformTools.onInstalled = { [weak self] in self?.refreshEnvironment() }
+        setup.obs.onInstalled = { [weak self] in self?.refreshEnvironment() }
 
         if canNotify {
             let center = UNUserNotificationCenter.current()
@@ -209,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 guard let self else { return }
                 if !self.capture.running {
                     let adb = try? ADB.executable().path
-                    let extensionState = VirtualCamera.extensionState()
+                    let extensionState = Installer.cameraState()
                     self.environmentKnown = true
                     self.adbPath = adb
                     self.extensionActive = extensionState == .ready
@@ -478,7 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         environmentCheckInProgress = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let adb = try? ADB.executable().path
-            let extensionState = VirtualCamera.extensionState()
+            let extensionState = Installer.cameraState()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.environmentCheckInProgress = false
@@ -560,29 +563,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let phone = devices.first { $0.serial == selectedSerial } ?? devices.first
         let allowed = phone.flatMap { $0.authorized ? $0 : nil }
         let debugging = Self.debuggingText(phone)
-        let obsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.obsBundleID)
+        let obsURL = Installer.installedOBS()
+        // Without adb the phone list fails for that reason alone, which the first step already says.
+        let phoneError = adbPath == nil ? nil : discoveryError
         let steps = [
-            SetupStep(id: "adb", title: "Android platform tools", done: adbPath != nil,
-                      help: adbPath.map { "adb found in \(URL(fileURLWithPath: $0).deletingLastPathComponent().path)." }
-                        ?? "Install them, for example with: brew install android-platform-tools",
-                      next: "install Android platform tools.",
-                      actions: [.copy("brew install android-platform-tools"),
-                                .open("Get Platform Tools", URL(string: "https://developer.android.com/tools/releases/platform-tools")!)]),
-            SetupStep(id: "extension", title: "OBS camera extension", done: extensionActive,
-                      help: extensionActive ? "Installed and approved." : obsURL != nil
-                        ? "Open OBS once, click Start Virtual Camera, then allow the extension in System Settings > General > Login Items & Extensions."
-                        : "Install OBS Studio 30 or later from obsproject.com, open it once and click Start Virtual Camera.",
-                      next: "turn on the OBS camera extension.",
-                      actions: obsURL.map { [.open("Open OBS", $0), .loginItems] }
-                        ?? [.open("Get OBS Studio", URL(string: "https://obsproject.com/download")!)]),
-            SetupStep(id: "phone", title: "Phone connected over USB", done: phone != nil,
-                      help: phone.map { "\($0.model) is plugged in." } ?? discoveryError ?? "Plug it in with a USB-C data cable.",
-                      next: discoveryError ?? "plug in your phone with a USB cable."),
+            SetupStep(id: "adb", title: "Get Android platform tools", done: adbPath != nil,
+                      help: adbPath.map { "Found adb in \((URL(fileURLWithPath: $0).deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)." }
+                        ?? "The app talks to your phone through adb, a small tool from Google.",
+                      next: "download Android platform tools in Setup.",
+                      actions: [.install("Download Platform Tools", setup.platformTools)],
+                      note: "It comes from Google's Android SDK.",
+                      link: .open("About platform tools", Installer.platformToolsPage),
+                      installer: setup.platformTools),
+            SetupStep(id: "obs-install", title: "Install OBS Studio", done: obsURL != nil || extensionActive,
+                      help: obsURL != nil ? "OBS Studio is installed."
+                        : extensionActive ? "OBS's camera is already on." : "OBS gives your Mac the camera your call app will see.",
+                      next: "install OBS Studio from Setup.",
+                      actions: [.install("Download OBS", setup.obs)],
+                      note: "Free and open source.",
+                      link: .open("Get OBS from obsproject.com", Installer.obsPage),
+                      installer: setup.obs),
+            SetupStep(id: "extension", title: "Turn on OBS's camera", done: extensionActive,
+                      help: extensionActive ? "It's on." : "macOS asks you once before OBS's camera can turn on.",
+                      next: "turn on OBS's camera.",
+                      actions: (obsURL.map { [SetupAction.open("Open OBS", $0)] } ?? []) + [.loginItems],
+                      howTo: ["Open OBS and click Start Virtual Camera.",
+                              "When macOS asks, click Open System Settings and turn on OBS.",
+                              "Quit OBS."]),
+            SetupStep(id: "phone", title: "Plug in your phone", done: phone != nil,
+                      help: phone.map { "\($0.model) is plugged in." } ?? phoneError ?? "Use a USB-C cable that carries data, not just power.",
+                      next: phoneError ?? "plug in your phone with a USB cable."),
             SetupStep(id: "debugging", title: "Allow USB debugging", done: allowed != nil,
                       help: allowed.map { "Allowed on \($0.model)." } ?? debugging.help,
-                      next: debugging.next),
-            SetupStep(id: "obs", title: "OBS Studio closed", done: !obsOpen,
-                      help: obsOpen ? "Quit OBS Studio. It can stay installed." : "OBS can stay installed.",
+                      next: debugging.next,
+                      howTo: ["On the phone, open Settings > About phone (on Samsung, then Software information) "
+                                + "and tap Build number seven times. Developer options appear.",
+                              "Open Settings > Developer options and turn on USB debugging.",
+                              "Plug the phone into the Mac. When the phone asks \"Allow USB debugging?\", "
+                                + "tick \"Always allow from this computer\" and tap Allow."],
+                      howToFolded: true),
+            SetupStep(id: "obs", title: "Close OBS Studio", done: !obsOpen,
+                      help: obsOpen ? "Quit OBS Studio while you use the webcam. It can stay installed." : "OBS is closed. It can stay installed.",
                       next: "quit OBS Studio.",
                       actions: [.quit("Quit OBS", bundleID: Self.obsBundleID)]),
         ]
