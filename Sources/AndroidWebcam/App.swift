@@ -298,7 +298,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Opening the running app again (Finder, Spotlight, Raycast) is the way in when the status item
     // is behind the notch or the menu bar is hidden: open the menu if the icon is reachable, else Settings.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if statusButtonReachable() {
+        // While Setup is open the app has a Dock icon, and its click means "take me to Setup".
+        if let window = shelf.window("setup") {
+            bringForward(window)
+        } else if statusButtonReachable() {
             statusItem?.button?.performClick(nil)
         } else {
             showSettings()
@@ -1030,7 +1033,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         refreshUI()
         // Quitting OBS is step 3's last move; macOS then fronts whatever was behind it, often System Settings.
         if !setup.complete, let window = shelf.window("setup") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { bringForward(window) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                bringForward(window)
+                self?.nudgeIfBehind()
+            }
         }
     }
 
@@ -1045,6 +1051,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             SetupView(model: setup)
         }
         setup.fit()
+        nudgeIfBehind()
+    }
+
+    /// macOS may draw Setup on top yet leave another app active (it does after Open Anyway and after OBS quits), so the
+    /// Dock icon bounces once to say where it is.
+    private func nudgeIfBehind() {
+        guard !DevMode.isOn else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.shelf.isOpen("setup"), !NSApp.isActive else { return }
+            NSApp.requestUserAttention(.informationalRequest)
+        }
     }
 
     /// While Setup is open the app has a Dock icon, so a stranger can find Setup again behind System Settings or OBS.

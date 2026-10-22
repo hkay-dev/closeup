@@ -502,6 +502,8 @@ private struct InstallerControls: View {
             HStack(spacing: 10) {
                 ProgressView(value: fraction)
                     .progressViewStyle(.linear)
+                    // Bytes arrive many times a second; an inherited spring left the bar well behind the numbers.
+                    .transaction { $0.animation = nil }
                     .accessibilityLabel(text)
                 if installer.canCancel {
                     Button("Cancel") { installer.cancel() }.controlSize(.small)
