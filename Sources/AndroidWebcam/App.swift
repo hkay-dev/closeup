@@ -129,7 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         Prefs.register()
         // Setup opens by itself on a first run and after the relaunch for OBS's camera, once the first checks are in.
         // Ask to come forward now, while the user's open (or the old copy's handoff) is fresh, so it opens in front.
-        if !DevMode.isOn, reopenSetup || !Prefs.defaults.bool(forKey: Prefs.setupShown) { activateApp() }
+        if !DevMode.isOn, reopenSetup || !Prefs.defaults.bool(forKey: Prefs.setupShown) {
+            // A regular app (Dock icon, a place in ⌘-Tab) is let to the front more readily than a menu bar one.
+            setupInDock(true)
+            activateApp()
+        }
         let savedMode = Prefs.defaults.string(forKey: Prefs.mode)
         if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
         statusItem?.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
@@ -715,12 +719,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                       help: extensionActive ? "It's on." : "macOS asks you once before OBS's camera can turn on.",
                       next: "turn on OBS's camera.",
                       actions: (obsURL.map { [SetupAction.open("Open OBS", $0)] } ?? []) + [.loginItems],
-                      howTo: ["Open OBS. When macOS asks about a camera extension, click Open System Settings.",
-                              "Turn on OBS there. Click the switch once, then wait for the password box.",
+                      howTo: ["Open OBS. The first time, click Continue on its permissions window (you don't need to "
+                                + "allow anything), then Cancel on its Auto-Configuration Wizard.",
+                              "When macOS asks about a camera extension, click Open System Settings. Turn on OBS there: "
+                                + "click the switch once, then wait for the password box.",
                               "Quit OBS. You don't need to set anything up in it."],
-                      more: ["The first time, OBS shows a few windows. Click Continue on the permissions one "
-                                + "(you don't need to allow anything), then Cancel on the Auto-Configuration Wizard.",
-                             "If macOS doesn't ask, click Start Virtual Camera in OBS, then Yes when it asks about video sources.",
+                      more: ["If macOS doesn't ask, click Start Virtual Camera in OBS, then Yes when it asks about video sources.",
                              "If OBS then says it couldn't find the virtual camera, click OK. You don't need to restart."]),
             SetupStep(id: "phone", title: "Plug in your phone", done: phone != nil,
                       help: phone.map { "\($0.model) is plugged in." } ?? phoneError
@@ -753,7 +757,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         guard !Prefs.defaults.bool(forKey: Prefs.setupShown) else { return }
         Prefs.defaults.set(true, forKey: Prefs.setupShown)
-        if !setup.complete { showSetup() }
+        if setup.complete { setupInDock(false) } else { showSetup() }
     }
 
     /// Starts when the saved phone shows up, or at launch. After capture ends, waits for that phone to be unplugged.
@@ -1024,6 +1028,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             || (!capture.running && note == "Quit OBS before starting this camera.") { note = nil }
         updateSetup()
         refreshUI()
+        // Quitting OBS is step 3's last move; macOS then fronts whatever was behind it, often System Settings.
+        if !setup.complete, let window = shelf.window("setup") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { bringForward(window) }
+        }
     }
 
     // MARK: Windows
@@ -1032,8 +1040,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updateSetup()
         setup.screen = { [weak self] in self?.shelf.window("setup")?.screen ?? NSScreen.main }
         setup.fit()
-        shelf.show("setup", title: "Set Up \(appName)") { SetupView(model: setup) }
+        setupInDock(true)
+        shelf.show("setup", title: "Set Up \(appName)", onClose: { [weak self] in self?.setupInDock(false) }) {
+            SetupView(model: setup)
+        }
         setup.fit()
+    }
+
+    /// While Setup is open the app has a Dock icon, so a stranger can find Setup again behind System Settings or OBS.
+    private func setupInDock(_ on: Bool) {
+        guard !DevMode.isOn else { return }
+        let policy: NSApplication.ActivationPolicy = on ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
     }
 
     @objc private func showLiveControls() {

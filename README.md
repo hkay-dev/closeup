@@ -31,7 +31,7 @@ Each new version is a new unsigned build, so you do this again after an update.
 
 ## First run
 
-The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through six steps, each with a button that does the work. On a fresh Mac it takes about 10 minutes, most of it in OBS's first launch.
+The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through six steps, each with a button that does the work. While Setup is open the app also has a Dock icon, so you can get back to it from behind System Settings or OBS. On a fresh Mac it takes about 10 minutes, most of it in OBS's first launch.
 
 1. **Get Android platform tools.** Click **Download Platform Tools**. It goes into the app's own folder in Application Support, nothing system-wide. The app turns off adb's wireless phone search, so macOS shouldn't ask about local networks; if it does (another tool started adb first), **Don't Allow** is fine, USB doesn't need it.
 2. **Install OBS Studio.** Click **Download OBS**. The app gets the latest release from OBS's GitHub page (about 150 MB), checks that the OBS Project signed it, and puts it in Applications. If you already have OBS, this step is done.
@@ -103,6 +103,7 @@ Open an issue at https://github.com/hkay-dev/android-webcam/issues; the bug form
 1. Quit the app from its menu. If you turned on **Launch at login**, turn it off in Settings first.
 2. Open Terminal and stop the adb server, which keeps running after the app quits:
    `"$HOME/Library/Application Support/Android Webcam/platform-tools/adb" kill-server`
+   If it says "cannot connect to daemon", adb wasn't running, which is fine.
 3. Delete the app and its files:
    ```sh
    rm -rf "/Applications/Android Webcam.app" "$HOME/Library/Application Support/Android Webcam" "$HOME/Library/Application Support/com.harsha.android-webcam" "$HOME/Library/Caches/com.harsha.android-webcam" "$HOME/Library/HTTPStorages/com.harsha.android-webcam"

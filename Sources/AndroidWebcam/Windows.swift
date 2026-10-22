@@ -318,6 +318,7 @@ private struct SetupStepCard: View {
     let number: Int
     let step: SetupStep
     let mark: Mark
+    @StateObject private var showHow = StateBox(false)
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -390,8 +391,16 @@ private struct SetupStepCard: View {
             Text(tip).font(.callout).fixedSize(horizontal: false, vertical: true)
         }
         if mark == .next, !step.more.isEmpty {
-            DisclosureGroup("Show me how") { list(step.more, numbered: step.howTo.isEmpty).padding(.top, 4) }
-                .font(.callout)
+            DisclosureGroup(isExpanded: $showHow.value.animation(Motion.allowed(Motion.stageChange))) {
+                list(step.more, numbered: step.howTo.isEmpty).padding(.top, 4)
+            } label: {
+                // A DisclosureGroup toggles only from its chevron; the words should open it too.
+                Text("Show me how")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(Motion.allowed(Motion.stageChange)) { showHow.value.toggle() } }
+            }
+            .font(.callout)
         }
         if mark == .next, step.note != nil || step.link != nil {
             HStack(spacing: 4) {
