@@ -32,8 +32,8 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 ## Using it
 
 - **Start Webcam** and **Stop Webcam** are at the top of the menu. The header shows the live picture, how long it's been live, and the phone's temperature and battery.
-- **Live Controls** opens a small floating panel that stays above your call: switch lenses, zoom, turn on the flashlight, and set exposure, white balance, focus and sharpening while you're live. Settings stay for the next call.
 - **Capture Mode** picks 1080p at 30 fps (the default, and the coolest for the phone), 1080p at 60, 4K at 60, or an experimental 1080p at 120. Phones differ; if one can't run a mode, the app says so instead of quietly picking another.
+- **Live Controls** opens a small floating panel that stays above your call without taking its keyboard focus: switch lenses, zoom (hold to keep zooming), turn on the flashlight, and set exposure, white balance, focus and sharpening while you're live. When the webcam is off it has a Start Webcam button. Settings stay for the next call. Esc closes it.
 - **Show Preview** opens a picture-only window, separate from what call apps see.
 - **Check Audio Sync** times a clap to measure how far the video lags the sound, so you can set an audio delay in your call or recording app.
 - **Settings** has Launch at login, Start when the phone is plugged in, and notifications.
