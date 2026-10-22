@@ -3,7 +3,11 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -20,7 +24,15 @@ jobs:
         run: ./scripts/build-app.sh
       - name: Diagnose
         run: "'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' --diagnose"
+      # ditto keeps the bundle's permissions and signature, which a plain artifact upload of the folder loses.
+      - name: Zip the app
+        run: ditto -c -k --keepParent "build/Android Webcam.app" build/Android-Webcam.zip
       - uses: actions/upload-artifact@v4
         with:
           name: android-webcam-app
-          path: build/Android Webcam.app
+          path: build/Android-Webcam.zip
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/Android-Webcam.zip --title "$GITHUB_REF_NAME" --generate-notes
