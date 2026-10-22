@@ -151,7 +151,7 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
             return
         }
         let current = attempt
-        phase = .installing(kind == .obs ? "Checking and installing OBS…" : "Installing platform tools…")
+        phase = .installing(kind == .obs ? "Checking that OBS is genuine and copying it into Applications…" : "Installing platform tools…")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try finish(file) }
             try? FileManager.default.removeItem(at: file)

@@ -373,13 +373,15 @@ struct LiveControlsView: View {
             }
             .animation(change, value: MenuHeaderView.stage(of: state.status))
             .animation(change, value: state.dot)
-            HStack(spacing: 10) {
-                if let model = state.model { Text(model).lineLimit(1) }
-                if let stats = state.stats { StatsView(stats: stats) }
-                if state.model == nil && state.stats == nil { Text("No phone running").lineLimit(1) }
+            // Without a phone the status already says the next setup step, so there's no second line to repeat it.
+            if state.model != nil || state.stats != nil {
+                HStack(spacing: 10) {
+                    if let model = state.model { Text(model).lineLimit(1) }
+                    if let stats = state.stats { StatsView(stats: stats) }
+                }
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
             }
-            .font(.system(size: 11).monospacedDigit())
-            .foregroundStyle(.secondary)
             if let note = state.note {
                 ZStack(alignment: .topLeading) {
                     Text(note)
@@ -403,7 +405,7 @@ struct LiveControlsView: View {
     private var cameraModule: some View {
         Module {
             if state.lenses.isEmpty {
-                Text(state.phoneSelected ? "This phone hasn't listed its lenses yet." : "No phone is selected.")
+                Text(state.phoneSelected ? "This phone hasn't listed its lenses yet." : "Your phone's lenses show up here.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -464,8 +466,7 @@ struct LiveControlsView: View {
         if state.stopping { return "Stopping the webcam." }
         if state.switching { return "Switching camera. Your call keeps the camera." }
         if state.canControl { return "Hold a zoom button to keep zooming." }
-        if state.running { return "Lens, zoom and flashlight work once the picture is live." }
-        if !state.phoneSelected { return "Plug in your phone, then start the webcam." }
+        if state.running || !state.phoneSelected { return "Lens, zoom and flashlight work once the picture is live." }
         return "Start the webcam to switch lenses."
     }
 
@@ -898,8 +899,8 @@ private struct LivePill: View {
     }
 }
 
-/// Keeps a view's natural height in a box, for the panel's short-screen scrolling.
-private struct HeightReader: View {
+/// Keeps a view's natural height in a box, for short-screen scrolling in Live Controls and Setup.
+struct HeightReader: View {
     let box: StateBox<CGFloat>
 
     var body: some View {

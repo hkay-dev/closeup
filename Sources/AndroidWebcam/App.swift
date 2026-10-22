@@ -127,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.register()
+        // Setup opens by itself on a first run and after the relaunch for OBS's camera, once the first checks are in.
+        // Ask to come forward now, while the user's open (or the old copy's handoff) is fresh, so it opens in front.
+        if !DevMode.isOn, reopenSetup || !Prefs.defaults.bool(forKey: Prefs.setupShown) { activateApp() }
         let savedMode = Prefs.defaults.string(forKey: Prefs.mode)
         if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
         statusItem?.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
@@ -362,8 +365,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         statusItem?.button?.toolTip = "\(appName): \(content.status)"
         statusItem?.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
+        // Before setup is done there's no phone to show; the menu and Live Controls offer Finish Setup… right there.
         let veil: PreviewView.Veil? = content.picture == nil
-            ? .init(title: "No picture yet", text: "Finish setup from the menu bar, then start the webcam.")
+            ? .init(title: setup.steps.isEmpty ? "No picture yet" : "Finish setup to see the picture")
             : content.picture?.veil
         (window?.contentView as? PreviewView)?.setVeil(veil)
 
@@ -594,6 +598,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard !capture.running, !relaunching, !DevMode.isOn, ProcessInfo.processInfo.environment[key] == nil,
               !setup.platformTools.busy, !setup.obs.busy,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
+        // Not while the user is still in System Settings (the approval's password box may be up there): the new copy's
+        // Setup would jump over it. The 3 s timer comes back once they leave.
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        guard front != "com.apple.systempreferences", front != "com.apple.SecurityAgent" else { return }
         // Set once and never reset: the 3 s timer and the menu re-enter refreshEnvironment while the launch is pending,
         // and a launch error must not retry every 3 s.
         relaunching = true
@@ -601,9 +609,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         configuration.createsNewApplicationInstance = true
         configuration.environment = ProcessInfo.processInfo.environment.merging(
             [key: "1", Self.showSetupKey: shelf.isOpen("setup") ? "1" : "0"]) { $1 }
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { app, error in
             guard error == nil else { return }
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+            DispatchQueue.main.async {
+                // When this copy is the active app, the new one inherits that, so its Setup opens in front and key.
+                if #available(macOS 14, *), let app { NSApp.yieldActivation(to: app) }
+                NSApp.terminate(nil)
+            }
         }
     }
 
@@ -674,18 +686,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // check counts (checkDraggedCopy makes the installer idle once it does).
         let obsURL = setup.obs.isWaiting ? nil : Installer.installedOBS()
         if setup.obs.isWaiting { setup.obs.checkDraggedCopy() }
+        let obsInstalled = obsURL != nil || extensionActive
         // Without adb the phone list fails for that reason alone, which the first step already says.
         let phoneError = adbPath == nil ? nil : discoveryError
+        // Steps 4 and 5 share these: a phone without USB debugging never shows up, so step 4 waits until it's on.
+        let debuggingHowTo = ["On the phone, open Settings > About phone (on Samsung, then Software information) "
+                                + "and tap Build number seven times. Developer options appear.",
+                              "Open Settings > Developer options and turn on USB debugging.",
+                              "Plug the phone into the Mac. When the phone asks \"Allow USB debugging?\", "
+                                + "tick \"Always allow from this computer\" and tap Allow."]
         let steps = [
             SetupStep(id: "adb", title: "Get Android platform tools", done: adbPath != nil,
-                      help: adbPath.map { "Found adb in \((URL(fileURLWithPath: $0).deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)." }
-                        ?? "adb, a small tool from Google, talks to your phone.",
+                      help: adbPath != nil ? "Platform tools are ready." : "adb, a small tool from Google, talks to your phone.",
                       next: "download Android platform tools in Setup.",
                       actions: [.install("Download Platform Tools", setup.platformTools)],
                       note: "It comes from Google's Android SDK.",
                       link: .open("About platform tools", Installer.platformToolsPage),
                       installer: setup.platformTools),
-            SetupStep(id: "obs-install", title: "Install OBS Studio", done: obsURL != nil || extensionActive,
+            SetupStep(id: "obs-install", title: "Install OBS Studio", done: obsInstalled,
                       help: obsURL != nil ? "OBS Studio is installed."
                         : extensionActive ? "OBS's camera is already on." : "OBS gives your Mac the camera your call app will see.",
                       next: "install OBS Studio from Setup.",
@@ -697,23 +715,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                       help: extensionActive ? "It's on." : "macOS asks you once before OBS's camera can turn on.",
                       next: "turn on OBS's camera.",
                       actions: (obsURL.map { [SetupAction.open("Open OBS", $0)] } ?? []) + [.loginItems],
-                      howTo: ["Open OBS and click Start Virtual Camera.",
-                              "When macOS asks, click Open System Settings and turn on OBS.",
-                              "Quit OBS."]),
+                      howTo: ["Open OBS. When macOS asks about a camera extension, click Open System Settings.",
+                              "Turn on OBS there. Click the switch once, then wait for the password box.",
+                              "Quit OBS. You don't need to set anything up in it."],
+                      more: ["The first time, OBS shows a few windows. Click Continue on the permissions one "
+                                + "(you don't need to allow anything), then Cancel on the Auto-Configuration Wizard.",
+                             "If macOS doesn't ask, click Start Virtual Camera in OBS, then Yes when it asks about video sources.",
+                             "If OBS then says it couldn't find the virtual camera, click OK. You don't need to restart."]),
             SetupStep(id: "phone", title: "Plug in your phone", done: phone != nil,
-                      help: phone.map { "\($0.model) is plugged in." } ?? phoneError ?? "Use a USB-C cable that carries data, not just power.",
-                      next: phoneError ?? "plug in your phone with a USB cable."),
+                      help: phone.map { "\($0.model) is plugged in." } ?? phoneError
+                        ?? "Use a USB cable that carries data. Some cables only charge.",
+                      next: phoneError ?? "plug in your phone with a USB cable.",
+                      tip: "Phone plugged in but not showing up? USB debugging has to be on first.",
+                      more: debuggingHowTo),
             SetupStep(id: "debugging", title: "Allow USB debugging", done: allowed != nil,
                       help: allowed.map { "Allowed on \($0.model)." } ?? debugging.help,
                       next: debugging.next,
-                      howTo: ["On the phone, open Settings > About phone (on Samsung, then Software information) "
-                                + "and tap Build number seven times. Developer options appear.",
-                              "Open Settings > Developer options and turn on USB debugging.",
-                              "Plug the phone into the Mac. When the phone asks \"Allow USB debugging?\", "
-                                + "tick \"Always allow from this computer\" and tap Allow."],
-                      howToFolded: true),
-            SetupStep(id: "obs", title: "Close OBS Studio", done: !obsOpen,
-                      help: obsOpen ? "Quit OBS Studio while you use the webcam. It can stay installed." : "OBS is closed. It can stay installed.",
+                      more: debuggingHowTo),
+            // Done only once OBS is there: "OBS is closed" reads oddly before it's installed.
+            SetupStep(id: "obs", title: "Close OBS Studio", done: obsInstalled && !obsOpen,
+                      help: obsOpen ? "Quit OBS Studio while you use the webcam. It can stay installed."
+                        : obsInstalled ? "OBS is closed. It can stay installed."
+                        : "Once OBS is installed, keep it closed while you use the webcam.",
                       next: "quit OBS Studio.",
                       actions: [.quit("Quit OBS", bundleID: Self.obsBundleID)]),
         ]
@@ -1007,7 +1030,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func showSetup() {
         updateSetup()
+        setup.screen = { [weak self] in self?.shelf.window("setup")?.screen ?? NSScreen.main }
+        setup.fit()
         shelf.show("setup", title: "Set Up \(appName)") { SetupView(model: setup) }
+        setup.fit()
     }
 
     @objc private func showLiveControls() {
@@ -1336,6 +1362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 enum AndroidWebcamApp {
     static func main() {
         do {
+            ADB.prepareEnvironment()
             let arguments = Array(CommandLine.arguments.dropFirst())
             if arguments == ["--diagnose"] { try diagnose(); return }
             if arguments.count == 2, arguments[0] == "--probe-hevc" { try probeHEVC(arguments[1]); return }
