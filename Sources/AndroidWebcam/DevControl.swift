@@ -65,6 +65,10 @@ struct DevHooks {
     /// Opens setup, settings, controls, sync or preview. False for any other name.
     let open: (String) -> Bool
     let close: (String) -> Void
+    /// What ⌃⌥⌘L does, since the dev instance registers no real shortcut.
+    let hotkey: () -> Void
+    /// Puts Check Audio Sync in a phase, to see the listening, result and failed states without a phone.
+    let syncPhase: (SyncCheckModel.Phase, SyncTest.Meter) -> Void
 }
 
 final class DevControl {
@@ -150,6 +154,26 @@ final class DevControl {
             let values = DevMode.defaults?.dictionaryRepresentation().filter { $0.key.first?.isLowercase == true
                 && !$0.key.hasPrefix("com.apple") && !$0.key.hasPrefix("NS") } ?? [:]
             return succeed(["suite": DevMode.suiteName, "values": jsonSafe(values)])
+        case "hotkey":
+            hooks.hotkey()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))    // the panel fades in or out
+            return succeed(["windows": windows()])
+        case "sync-phase":
+            let number = { (key: String) in (request[key] as? NSNumber)?.doubleValue ?? Double(request[key] as? String ?? "") }
+            var meter = SyncTest.Meter()
+            meter.level = Float(number("level") ?? 0)
+            meter.progress = number("progress") ?? 0
+            meter.heard = request["heard"] as? Bool ?? (request["heard"] as? String == "true")
+            switch request["phase"] as? String {
+            case "idle": hooks.syncPhase(.idle, meter)
+            case "listening": hooks.syncPhase(.listening, meter)
+            case "result": hooks.syncPhase(.result(lagMs: number("lagMs") ?? 0), meter)
+            case "failed":
+                hooks.syncPhase(.failed(request["text"] as? String ?? "Something went wrong.",
+                                        microphoneSettings: request["microphone"] as? Bool ?? false), meter)
+            default: return fail("sync-phase needs phase: idle, listening (level, progress, heard), result (lagMs) or failed (text, microphone).")
+            }
+            return succeed()
         default:
             return fail("Unknown op \(op).")
         }

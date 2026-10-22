@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// Ticks the panel's live clock while it's open, as the menu's clock does while the menu is.
     private var controlsClock: Timer?
     private let syncModel = SyncCheckModel()
+    private let settingsModel = SettingsModel()
+    /// ⌃⌥⌘L opens and closes Live Controls from any app. The dev instance records it instead of registering it.
+    private lazy var hotkey = GlobalHotkey { [weak self] in self?.toggleLiveControls() }
     private let shelf = WindowShelf()
 
     private var devices: [AndroidDevice] = []
@@ -181,6 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // A finished download shows up in Setup at once rather than at the next 3 s check.
         setup.platformTools.onInstalled = { [weak self] in self?.refreshEnvironment() }
         setup.obs.onInstalled = { [weak self] in self?.refreshEnvironment() }
+        settingsModel.notificationsChanged = { [weak self] on in if on { self?.requestNotificationPermission() } }
+        settingsModel.shortcutChanged = { [weak self] on in self?.setShortcut(on) }
+        settingsModel.copyDiagnostics = { [weak self] in self?.copyDiagnostics() }
+        settingsModel.runSetup = { [weak self] in self?.showSetup() }
+        setShortcut(Prefs.defaults.bool(forKey: Prefs.liveControlsShortcut))
 
         if canNotify {
             let center = UNUserNotificationCenter.current()
@@ -254,6 +262,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 case LiveControlsPanel.id: self?.controls.close()
                 default: self?.shelf.close(name)
                 }
+            },
+            hotkey: { [weak self] in self?.toggleLiveControls() },
+            syncPhase: { [weak self] phase, meter in
+                self?.syncModel.meter = meter
+                self?.syncModel.phase = phase
             }))
         control.start()
         devControl = control
@@ -998,9 +1011,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         controlsClock = timer
     }
 
+    /// What the global shortcut does: Live Controls opens, or closes when it's open.
+    private func toggleLiveControls() {
+        if controls.isOpen { controls.close() } else { showLiveControls() }
+    }
+
+    private func setShortcut(_ on: Bool) {
+        settingsModel.shortcutProblem = hotkey.set(on)
+        controlsItem.keyEquivalent = on ? GlobalHotkey.keyEquivalent : ""
+        controlsItem.keyEquivalentModifierMask = on ? GlobalHotkey.modifiers : []
+    }
+
     @objc private func showSettings() {
-        shelf.show("settings", title: "\(appName) Settings") {
-            SettingsView(onNotificationsChange: { [weak self] on in if on { self?.requestNotificationPermission() } })
+        shelf.show("settings", title: "\(appName) Settings") { SettingsView(model: settingsModel) }
+    }
+
+    /// Puts a plain-text report on the pasteboard for a bug report. adb runs off main; the dev instance records it.
+    private func copyDiagnostics() {
+        guard settingsModel.copy != .gathering else { return }
+        settingsModel.copy = .gathering
+        let known = devices + listedDevices + (runDevice.map { [$0] } ?? [])
+        let input = Diagnostics.Input(
+            adbPath: adbPath, obsPath: Installer.installedOBS()?.path,
+            obsCamera: extensionActive ? "on" : environmentKnown ? "off" : "not checked yet",
+            phone: devices.first { $0.serial == selectedSerial } ?? devices.first,
+            steps: setup.steps.map { ($0.title, $0.done) },
+            mode: CaptureMode.all[capture.running ? runModeIndex : modeIndex].title,
+            webcam: live ? "live" : capture.running ? "starting or reconnecting" : "off",
+            serials: known.flatMap { [$0.serial, $0.hardwareSerial].compactMap { $0 } })
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let report = Diagnostics.report(input)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if DevMode.isOn {
+                    DevMode.record("pasteboard", report)
+                } else {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(report, forType: .string)
+                }
+                self.settingsModel.copy = .copied
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                    if self?.settingsModel.copy == .copied { self?.settingsModel.copy = .idle }
+                }
+            }
         }
     }
 
@@ -1247,6 +1300,8 @@ enum AndroidWebcamApp {
             if arguments.count == 2, arguments[0] == "--probe-hevc" { try probeHEVC(arguments[1]); return }
             guard arguments.isEmpty else { throw WebcamError(message: "Use --diagnose or --probe-hevc <file> for a headless check.") }
             let app = NSApplication.shared
+            // Keeps the last 200 stderr lines for Copy Diagnostics, and still writes them where they went before.
+            ErrorLog.start()
             let delegate = AppDelegate()
             app.setActivationPolicy(.accessory)
             app.delegate = delegate

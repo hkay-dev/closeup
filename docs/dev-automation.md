@@ -6,6 +6,8 @@ covers:
   - Sources/AndroidWebcam/DevAccessibility.swift
   - Sources/AndroidWebcam/App.swift
   - Sources/AndroidWebcam/Windows.swift
+  - Sources/AndroidWebcam/Hotkey.swift
+  - Sources/AndroidWebcam/Diagnostics.swift
   - Sources/AndroidWebcam/Installer.swift
   - Sources/AndroidWebcam/ControlsPanel.swift
   - scripts/dev.sh
@@ -31,7 +33,8 @@ The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute dir
 | Menu bar | A status item | None at all. A hidden status item would still be saved in the real app's defaults, so none is created. The menu is the same `NSMenu`, read and chosen through the socket. |
 | Windows | Brought forward and activated | Parked one level below the desktop (`CGWindowLevelForKey(.desktopWindow) - 1`) with `orderFrontRegardless`. The wallpaper covers them, the app never activates, nothing takes focus. The Live Controls panel loses its floating level the same way. The Preview window and the Live Controls panel skip their saved frames, so no `NSWindow Frame Preview` or `NSWindow Frame LiveControls` lands in the real defaults. |
 | Notifications | macOS banners | Recorded, not posted (`effects`). |
-| Buttons that act outside the app | Open OBS, About platform tools, Get OBS from obsproject.com, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch | Recorded, not done: no URL opened, no login item registered, no app quit. |
+| Buttons that act outside the app | Open OBS, About platform tools, Get OBS from obsproject.com, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch, Copy Diagnostics | Recorded, not done: no URL opened, no login item registered, no app quit, nothing on the pasteboard. Copy Diagnostics records the whole report as a `pasteboard` effect. |
+| The Live Controls shortcut (⌃⌥⌘L) | Registered with Carbon `RegisterEventHotKey`, so it works from any app with no Accessibility permission | Never registered, since it would fire on the real Mac. Turning the Settings switch on or off records `hotkey` (`register ⌃⌥⌘L`, `unregister ⌃⌥⌘L`), and `ctl hotkey` runs what the press would. The menu's Live Controls… item still shows the key (`"key": "l"`; the modifiers aren't in the reply). |
 | Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
 | A Mac with nothing installed | | `ANDROID_WEBCAM_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
 | OBS extension relaunch | `relaunchForExtension` opens a fresh copy and quits | Skipped. |
@@ -54,9 +57,11 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 | `tree WINDOW` | The accessibility tree as JSON (role, label, value, help, enabled). |
 | `press WINDOW LABEL` | Presses the one enabled control with that label (exact, then case-blind, then a part of it); says which controls exist when none or several match. Reply: what was pressed and the window's text afterwards. |
 | `shot WINDOW PATH` | Saves the window as a PNG with `screencapture -x -o -l <windowNumber>`; if that comes back empty it draws the window's own view and says so under `notes`. |
-| `effects` | What the instance would have done outside its windows: `notification`, `setup-action`, `open-url`, `launch-at-login`, `open-login-items`. |
+| `effects` | What the instance would have done outside its windows: `notification`, `setup-action`, `open-url`, `launch-at-login`, `open-login-items`, `hotkey`, `pasteboard` (the Copy Diagnostics report). |
 | `defaults` | The dev suite's values, to check that a toggle landed there. |
 | `ctl OP key=value key:=json` | Any operation. |
+| `ctl hotkey` | Does what ⌃⌥⌘L does: opens Live Controls, or closes it when it's open. Reply: open windows. |
+| `ctl sync-phase phase=P ...` | Puts Check Audio Sync in a state without a phone or a clap, to look at it: `phase=listening level:=0.6 progress:=0.4 heard:=false`, `phase=result lagMs:=118`, `phase=failed text='...' microphone:=true`, `phase=idle`. It changes only the window; the Start button still needs a live webcam. |
 | `smoke [DIR]` | The whole journey below, with checks. |
 
 `WINDOW` is the id from `windows`. Sliders and segmented pickers in Live Controls can be read with `text` and `tree`; `press` covers buttons, check boxes, radio buttons and disclosure triangles. In Live Controls that's `Start Webcam` or `Finish Setup…` (shown only while the webcam isn't running; there's no Stop there), the lens chips (by lens name, such as `Front`), `Zoom in`, `Zoom out`, `Flashlight`, the white balance chips (`Auto white balance`, `Daylight`, `Cloudy`, `Incandescent`, `Fluorescent`), `Continuous focus`, `Locked focus`, `More` and `Reset to Automatic`. A press is one click, so it can't show the zoom buttons repeating while held.

@@ -12,13 +12,14 @@ enum Prefs {
     static let startOnPlugIn = "startOnPlugIn"
     static let notifications = "notifications"
     static let setupShown = "setupShown"
+    static let liveControlsShortcut = "liveControlsShortcut"
     static func lenses(_ serial: String) -> String { "lenses.\(serial)" }
 
     /// The app's settings. The dev automation instance keeps its own suite (see DevControl.swift).
     static let defaults: UserDefaults = DevMode.defaults ?? .standard
 
     static func register() {
-        defaults.register(defaults: [startOnPlugIn: false, notifications: true, macSharpness: 0.0])
+        defaults.register(defaults: [startOnPlugIn: false, notifications: true, macSharpness: 0.0, liveControlsShortcut: true])
     }
 }
 
@@ -420,49 +421,112 @@ final class ImageSettingsStore: ObservableObject {
 
 // MARK: Settings
 
+/// What Settings shows that the app owns, and what its buttons do.
+final class SettingsModel: ObservableObject {
+    enum Copy: Equatable { case idle, gathering, copied }
+    @Published var copy = Copy.idle
+    /// Why the Live Controls shortcut isn't working, such as another app holding the same keys.
+    @Published var shortcutProblem: String?
+    var notificationsChanged: (Bool) -> Void = { _ in }
+    var shortcutChanged: (Bool) -> Void = { _ in }
+    var copyDiagnostics: () -> Void = {}
+    var runSetup: () -> Void = {}
+}
+
 struct SettingsView: View {
+    @ObservedObject var model: SettingsModel
     @AppStorage(Prefs.startOnPlugIn, store: Prefs.defaults) private var startOnPlugIn = false
     @AppStorage(Prefs.notifications, store: Prefs.defaults) private var notifications = true
+    @AppStorage(Prefs.liveControlsShortcut, store: Prefs.defaults) private var shortcut = true
     @StateObject private var loginStatus = StateBox(SMAppService.mainApp.status)
     @StateObject private var loginError = StateBox<String?>(nil)
     @StateObject private var notificationsBlocked = StateBox(false)
-    let onNotificationsChange: (Bool) -> Void
 
     var body: some View {
-        Form {
-            Toggle("Launch at login", isOn: Binding(get: { loginStatus.value == .enabled }, set: { setLaunchAtLogin($0) }))
-            if loginStatus.value == .requiresApproval {
-                HStack {
-                    Text("Allow \(appName) in Login Items to finish.").font(.callout).foregroundStyle(.secondary)
-                    Button("Open Login Items") {
-                        if DevMode.isOn { DevMode.record("open-login-items", "Open Login Items") } else { SMAppService.openSystemSettingsLoginItems() }
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: "General", symbol: "gearshape") {
+                SettingToggle(title: "Launch at login", hint: "Puts \(appName) in the menu bar when you log in.",
+                              isOn: Binding(get: { loginStatus.value == .enabled }, set: { setLaunchAtLogin($0) })) {
+                    if loginStatus.value == .requiresApproval {
+                        HStack(spacing: 8) {
+                            Text("Allow \(appName) in Login Items to finish.").foregroundStyle(.secondary)
+                            Button("Open Login Items") {
+                                if DevMode.isOn { DevMode.record("open-login-items", "Open Login Items") } else { SMAppService.openSystemSettingsLoginItems() }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    if let loginError = loginError.value { Text(loginError).foregroundStyle(.secondary) }
+                }
+                GroupDivider()
+                SettingToggle(title: "Start when the phone is plugged in",
+                              hint: "Starts the webcam once when your saved phone connects. After you stop it, it waits until you plug the phone in again.",
+                              isOn: $startOnPlugIn)
+                GroupDivider()
+                SettingToggle(title: "Notifications", hint: "When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.",
+                              isOn: $notifications) {
+                    if notifications && notificationsBlocked.value {
+                        Label("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.",
+                              systemImage: "bell.slash")
+                            .foregroundStyle(.orange)
                     }
                 }
             }
-            if let loginError = loginError.value { Text(loginError).font(.callout).foregroundStyle(.secondary) }
-            Toggle("Start when the phone is plugged in", isOn: $startOnPlugIn)
-            Text("Starts the webcam once when your saved phone connects. After you stop it, it waits until you plug the phone in again.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Toggle("Notifications", isOn: $notifications)
-                .onChange(of: notifications) { onNotificationsChange($0); checkNotifications() }
-            Text("When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if notifications && notificationsBlocked.value {
-                Label("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.",
-                      systemImage: "bell.slash")
-                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+            SettingsGroup(title: "Live Controls", symbol: "slider.horizontal.3") {
+                SettingToggle(title: "Live Controls shortcut \(GlobalHotkey.label)",
+                              hint: "Opens and closes Live Controls from any app, even a call in full screen.",
+                              isOn: $shortcut, shownTitle: "Keyboard shortcut", keys: GlobalHotkey.keys) {
+                    if shortcut, let problem = model.shortcutProblem {
+                        Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                }
+            }
+            SettingsGroup(title: "Help", symbol: "questionmark.circle") {
+                SettingAction(title: "Report a problem",
+                              hint: "Copies the app and macOS versions, the phone model, setup and recent errors for a bug report. No serial numbers.") {
+                    Button("Copy Diagnostics") { model.copyDiagnostics() }
+                        .disabled(model.copy == .gathering)
+                    copyStatus
+                }
+                GroupDivider()
+                SettingAction(title: "Setup", hint: "Go through the setup steps again, to check them or to set up another phone.") {
+                    Button("Run Setup Again") { model.runSetup() }
+                }
             }
             Text("Version \(appVersion) · phone server \(ScrcpyServer.version)")
                 .font(.footnote).foregroundStyle(.secondary)
                 .textSelection(.enabled)
-                .padding(.top, 10)
+                .frame(maxWidth: .infinity)
         }
-        .padding(20)
-        .frame(width: 420)
+        .padding(22)
+        .frame(width: 440)
+        .animation(Motion.allowed(Motion.stageChange), value: model.copy)
+        .animation(Motion.allowed(Motion.stageChange), value: model.shortcutProblem)
+        .onChange(of: notifications) { model.notificationsChanged($0); checkNotifications() }
+        .onChange(of: shortcut) { model.shortcutChanged($0) }
         .onAppear(perform: checkNotifications)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginStatus.value = SMAppService.mainApp.status
             checkNotifications()
+        }
+    }
+
+    /// "Copied" for a moment after a press, in the spot next to the button.
+    @ViewBuilder private var copyStatus: some View {
+        switch model.copy {
+        case .idle:
+            EmptyView()
+        case .gathering:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Gathering…").foregroundStyle(.secondary)
+            }
+            .font(.callout)
+            .transition(Motion.swap)
+        case .copied:
+            Label { Text("Copied") } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                .font(.callout.weight(.medium))
+                .transition(Motion.swap)
         }
     }
 
@@ -490,6 +554,121 @@ struct SettingsView: View {
     }
 }
 
+/// A rounded card with a small header, like Setup's step cards.
+private struct SettingsGroup<Content: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 0) { content }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Card())
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+    }
+}
+
+private struct Card: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.primary.opacity(0.04))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+    }
+}
+
+private struct GroupDivider: View {
+    var body: some View { Divider().opacity(0.7) }
+}
+
+/// A title with its switch at the trailing edge and a hint under it. The switch carries the title, so tools and
+/// VoiceOver read "Notifications", and a click on the title flips it too.
+private struct SettingToggle<Extra: View>: View {
+    let title: String
+    let hint: String
+    @Binding var isOn: Bool
+    /// What the row shows in place of the title, when keycaps say the rest.
+    var shownTitle: String? = nil
+    var keys: [String] = []
+    @ViewBuilder var extra: Extra
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text(shownTitle ?? title)
+                    if !keys.isEmpty { KeyCaps(keys: keys) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { isOn.toggle() }
+                .accessibilityHidden(true)
+                Toggle(title, isOn: $isOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+            Text(hint)
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            extra
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 11)
+    }
+}
+
+extension SettingToggle where Extra == EmptyView {
+    init(title: String, hint: String, isOn: Binding<Bool>) {
+        self.init(title: title, hint: hint, isOn: isOn) { EmptyView() }
+    }
+}
+
+/// Keys drawn as small caps, as a shortcut shows on a Mac keyboard.
+private struct KeyCaps: View {
+    let keys: [String]
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(keys, id: \.self) { key in
+                Text(key)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.primary.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
+            }
+        }
+    }
+}
+
+/// A title, a hint and a row of buttons.
+private struct SettingAction<Buttons: View>: View {
+    let title: String
+    let hint: String
+    @ViewBuilder var buttons: Buttons
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            Text(hint)
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) { buttons }
+                .padding(.top, 5)
+        }
+        .padding(.vertical, 11)
+    }
+}
+
 // MARK: Audio sync check
 
 final class SyncCheckModel: ObservableObject {
@@ -509,20 +688,11 @@ final class SyncCheckModel: ObservableObject {
 
 struct SyncCheckView: View {
     @ObservedObject var model: SyncCheckModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Clap once, in the middle of the picture, with the webcam live.")
-                .fontWeight(.semibold).fixedSize(horizontal: false, vertical: true)
-            Text("This measures how far the video lags behind the sound on this Mac. Press Start and clap where the microphone can hear it. It listens for up to 8 seconds and stops once it has the clap. Nothing is saved.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Label(model.microphone ?? "No microphone found", systemImage: model.microphone == nil ? "mic.slash" : "mic")
-                .font(.callout).foregroundStyle(.secondary)
-                .accessibilityLabel(model.microphone.map { "Microphone: \($0)" } ?? "No microphone found")
-            phaseView
-                .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.phase)
+        VStack(alignment: .leading, spacing: 16) {
+            hero
+            stage
             HStack {
                 if let busy = model.busy {
                     ProgressView().controlSize(.small)
@@ -534,42 +704,96 @@ struct SyncCheckView: View {
                 Spacer()
                 Button(startTitle) { model.begin() }
                     .keyboardShortcut(.defaultAction)
+                    .controlSize(.large)
                     .disabled(!model.live || model.phase == .listening || model.microphone == nil)
             }
         }
-        .padding(20)
-        .frame(width: 420)
+        .padding(22)
+        .frame(width: 440)
+    }
+
+    private var hero: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.72)], startPoint: .top, endPoint: .bottom))
+                Image(systemName: "hands.clap.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 52, height: 52)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Clap once, in the middle of the picture")
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("This measures how far the video lags behind the sound on this Mac. It listens for up to 8 seconds and stops once it hears the clap. Nothing is saved.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The microphone, then the meter, the result or what went wrong. It keeps one height, so the window doesn't jump.
+    private var stage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(model.microphone ?? "No microphone found", systemImage: model.microphone == nil ? "mic.slash" : "mic")
+                .font(.callout).foregroundStyle(.secondary)
+                .accessibilityLabel(model.microphone.map { "Microphone: \($0)" } ?? "No microphone found")
+            ZStack(alignment: .topLeading) { phaseView }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 176, alignment: .topLeading)
+        .background(Card())
+        .animation(Motion.allowed(Motion.stageChange), value: model.phase)
     }
 
     @ViewBuilder private var phaseView: some View {
         switch model.phase {
         case .idle:
-            // Holds the space, so the window keeps its size from one step to the next.
-            Color.clear.frame(height: 0)
+            VStack(alignment: .leading, spacing: 10) {
+                ClapMeter(level: 0)
+                Text(model.live ? "Press Start, then clap where the microphone can hear it." : "Start the webcam first, then press Start and clap.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .transition(Motion.swap)
         case .listening:
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    LevelMeter(level: model.meter.level)
-                    Text(model.meter.heard ? "Heard the clap. Matching it to the picture." : "Listening. Clap once.")
-                        .font(.callout)
-                }
-                ProgressView(value: model.meter.heard ? 1 : model.meter.progress)
-                    .progressViewStyle(.linear)
-                    .animation(reduceMotion ? nil : .linear(duration: 0.05), value: model.meter.progress)
+            VStack(alignment: .leading, spacing: 10) {
+                ClapMeter(level: model.meter.level, heard: model.meter.heard)
+                Text(model.meter.heard ? "Heard the clap. Matching it to the picture." : "Listening. Clap once.")
+                    .font(.callout.weight(.medium))
+                TimeBar(progress: model.meter.heard ? 1 : model.meter.progress)
             }
             .accessibilityElement(children: .combine)
+            .transition(Motion.swap)
         case let .result(lagMs):
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Self.headline(lagMs))
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("\(Int(abs(lagMs).rounded()))")
+                        .font(.system(size: 50, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                    Text("ms")
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Label { Text(Self.direction(lagMs)) } icon: {
+                    Image(systemName: Self.inSync(lagMs) ? "checkmark.circle.fill" : "speaker.wave.2.fill")
+                        .foregroundStyle(Self.inSync(lagMs) ? Color.green : Color.orange)
+                }
+                .font(.headline)
                 Text(Self.advice(lagMs))
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
+                    .padding(.top, 4)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(Self.headline(lagMs)). \(Self.advice(lagMs))")
+            .transition(Motion.swap)
         case let .failed(text, microphoneSettings):
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
@@ -580,6 +804,7 @@ struct SyncCheckView: View {
                     }
                 }
             }
+            .transition(Motion.swap)
         }
     }
 
@@ -590,7 +815,15 @@ struct SyncCheckView: View {
         }
     }
 
-    /// The number to act on. Positive lag means the video reaches the Mac after the sound.
+    private static func inSync(_ lagMs: Double) -> Bool { abs(lagMs).rounded() < 20 }
+
+    /// The line under the big number. Positive lag means the video reaches the Mac after the sound.
+    static func direction(_ lagMs: Double) -> String {
+        if inSync(lagMs) { return "In sync" }
+        return lagMs > 0 ? "Video is behind the sound" : "Sound is behind the video"
+    }
+
+    /// The result as one line, for VoiceOver and the dev tools.
     static func headline(_ lagMs: Double) -> String {
         let ms = Int(abs(lagMs).rounded())
         if ms < 20 { return "In sync" }
@@ -605,20 +838,44 @@ struct SyncCheckView: View {
     }
 }
 
-/// A short bar that follows the microphone level.
-private struct LevelMeter: View {
+/// A wide rounded bar that follows the microphone level on a spring, and fills once the clap is heard.
+private struct ClapMeter: View {
     let level: Float
+    var heard = false
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule().fill(Color.green)
-                    .frame(width: max(4, geometry.size.width * CGFloat(level)))
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule()
+                    .fill(LinearGradient(colors: [Color.green.opacity(0.75), Color.green], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(12, geometry.size.width * fraction))
+                    .opacity(heard || level > 0.01 ? 1 : 0)
             }
         }
-        .frame(width: 72, height: 6)
-        .animation(.linear(duration: 0.05), value: level)
+        .frame(height: 12)
+        .animation(Motion.allowed(Motion.entrance), value: level)
+        .animation(Motion.allowed(Motion.stageChange), value: heard)
+        .accessibilityHidden(true)
+    }
+
+    private var fraction: CGFloat { heard ? 1 : CGFloat(min(max(level, 0), 1)) }
+}
+
+/// How much of the 8 seconds the test has used.
+private struct TimeBar: View {
+    let progress: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule().fill(Color.accentColor.opacity(0.8))
+                    .frame(width: geometry.size.width * CGFloat(min(max(progress, 0), 1)))
+            }
+        }
+        .frame(height: 4)
+        .animation(Motion.allowed(.linear(duration: 0.05)), value: progress)
         .accessibilityHidden(true)
     }
 }
