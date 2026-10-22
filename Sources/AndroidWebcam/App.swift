@@ -1000,9 +1000,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         frameLock.unlock()
         controlsClock?.invalidate()
         controlsClock = nil
+        // A live frame would be stale by the next open, as the header's would.
+        if !open, live { controls.picture.clear() }
         guard open else { return }
         refreshUI()
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refreshUI() }
+        // Only the live clock moves on its own; everything else refreshes on its event.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            if let self, self.liveSince != nil { self.refreshUI() }
+        }
         RunLoop.main.add(timer, forMode: .common)
         controlsClock = timer
     }

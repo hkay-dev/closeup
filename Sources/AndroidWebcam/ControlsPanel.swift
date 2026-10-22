@@ -61,8 +61,8 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         picture.setAccessibilityElement(false)
     }
 
-    /// Opens the panel, the first time near the top right of `screen` (the status item's), without taking the
-    /// call app's place as the active app: a nonactivating panel still gets keys for its sliders and Esc.
+    /// Opens the panel, the first time near the top right of `screen` (the status item's). It never takes the call
+    /// app's keyboard: buttons and sliders work without the panel becoming key, so mute and push-to-talk keep working.
     func show(on screen: NSScreen?) {
         if let panel { present(panel); return }
         let host = NSHostingController(rootView: LiveControlsView(model: model, store: store, picture: picture))
@@ -76,6 +76,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -116,7 +117,6 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
 
     private func present(_ panel: NSPanel) {
         if DevMode.isOn { DevMode.park(panel); return }
-        panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
     }
 
@@ -144,7 +144,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     }
 }
 
-/// Esc closes it, as it does a popover.
+/// Esc closes it, as it does a popover, on the rare occasions it is key.
 private final class HUDPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { performClose(sender) }
 }
@@ -730,33 +730,46 @@ private struct StatsView: View {
 /// The red dot and the clock on a live picture, like the menu header's.
 private struct LivePill: View {
     let text: String
-    @StateObject private var dim = StateBox(false)
 
     var body: some View {
         HStack(spacing: 5) {
-            Circle().fill(Color(nsColor: .systemRed)).frame(width: 6, height: 6).opacity(dim.value ? 0.4 : 1)
+            PulsingDot().frame(width: 6, height: 6)
             Text(text).font(.system(size: 11, weight: .semibold).monospacedDigit()).foregroundStyle(.white)
         }
         .padding(.horizontal, 8)
         .frame(height: 20)
         .background(Capsule().fill(Color.black.opacity(0.55)))
-        .onAppear(perform: pulse)
-        // Reduce Motion can change while the pill shows.
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
-            pulse()
+    }
+}
+
+/// The header's pulse, as a Core Animation layer animation so it costs the app nothing per frame.
+private struct PulsingDot: NSViewRepresentable {
+    final class DotView: NSView {
+        private var observer: NSObjectProtocol?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.systemRed.cgColor
+            layer?.cornerRadius = 3
+            // Reduce Motion can change while the pill shows; Motion.pulse removes the animation then.
+            observer = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                Motion.pulse(self?.layer, false)
+                Motion.pulse(self?.layer, true)
+            }
         }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        deinit { if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) } }
+
+        // Layers lose their animations when the view leaves the window, so start it again on the way back.
+        override func viewDidMoveToWindow() { Motion.pulse(layer, window != nil) }
     }
 
-    private func pulse() {
-        guard !Motion.reduced else {
-            var still = Transaction()
-            still.disablesAnimations = true
-            withTransaction(still) { dim.value = false }
-            return
-        }
-        guard !dim.value else { return }
-        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim.value = true }
-    }
+    func makeNSView(context: Context) -> DotView { DotView(frame: NSRect(x: 0, y: 0, width: 6, height: 6)) }
+    func updateNSView(_ view: DotView, context: Context) {}
 }
 
 /// Lays chips out in rows, wrapping when the next one doesn't fit.
