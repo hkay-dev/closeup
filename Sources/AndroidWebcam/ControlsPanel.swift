@@ -267,13 +267,16 @@ struct LiveControlsView: View {
                 .help("Turn the phone's flashlight \(state.torchOn ? "off" : "on")")
             }
             .disabled(!state.canControl)
-            Text(cameraHint)
-                .font(.system(size: 11))
-                .foregroundStyle(state.lensNote != nil ? Color.orange : Color.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .id(cameraHint)
-                .transition(Motion.swap)
+            // Old and new words share one spot while they swap, so the module doesn't grow for a moment.
+            ZStack(alignment: .topLeading) {
+                Text(cameraHint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(state.lensNote != nil ? Color.orange : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(cameraHint)
+                    .transition(Motion.swap)
+            }
         }
         .animation(change, value: state.lensID)
         .animation(change, value: cameraHint)
@@ -315,9 +318,11 @@ struct LiveControlsView: View {
 
             VStack(spacing: 6) {
                 Row(title: "White balance") {
-                    Text(Self.balanceName(store.phone.whiteBalance))
-                        .id(store.phone.whiteBalance)
-                        .transition(Motion.swap)
+                    ZStack(alignment: .trailing) {
+                        Text(Self.balanceName(store.phone.whiteBalance))
+                            .id(store.phone.whiteBalance)
+                            .transition(Motion.swap)
+                    }
                 }
                 HStack(spacing: 4) {
                     ForEach(WhiteBalance.allCases, id: \.self) { balance in
@@ -726,8 +731,9 @@ private struct ChipFlow: Layout {
     }
 }
 
-/// The app's video view, which the frame tap feeds directly. It sits in a clipping container of a fixed size: on its
-/// own, the video view grew to the panel's full width when the panel resized for More.
+/// The app's video view, which the frame tap feeds directly. It sits at a fixed size in a clipping container: SwiftUI
+/// lays the container out at the panel's full width for a moment whenever the panel resizes, and a video view that
+/// followed it kept its video layer that wide, off center, once it shrank back.
 private struct PictureHost: NSViewRepresentable {
     let view: PreviewView
     let size: CGSize
@@ -737,8 +743,8 @@ private struct PictureHost: NSViewRepresentable {
         container.wantsLayer = true
         container.layer?.masksToBounds = true
         view.removeFromSuperview()
+        view.autoresizingMask = []
         view.frame = container.bounds
-        view.autoresizingMask = [.width, .height]
         container.addSubview(view)
         return container
     }
