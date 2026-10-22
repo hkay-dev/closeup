@@ -6,6 +6,10 @@ struct AndroidDevice: Equatable {
     let serial: String
     let status: String
     let model: String
+    /// The name the phone's owner sees in its own settings (About phone), read once it allows debugging.
+    var name: String?
+    /// What the app calls the phone: its own name, else adb's model code ("SM S938U1").
+    var displayName: String { name ?? model }
     /// On wireless debugging: an mDNS name or ip:port serial instead of a USB one.
     var wireless = false
     /// The phone's own serial where the adb serial carries it (a USB serial, or the middle of an mDNS name).
@@ -364,7 +368,7 @@ final class CaptureController {
         let statsRun = statsGeneration
         lock.unlock()
         running = true
-        report("Starting \(device.model)...", active: true)
+        report("Starting \(device.displayName)...", active: true)
         statsQueue.async { [weak self] in self?.pollStats(serial: device.serial, run: statsRun) }
         worker.async { [weak self] in
             guard let self else { return }
@@ -469,28 +473,41 @@ final class CaptureController {
             let focal = rest.range(of: "focal=").flatMap { Double(rest[$0.upperBound...].prefix { $0.isNumber || $0 == "." }) }
             return (id, facing, focal)
         }
-        let main = found.filter { $0.facing == "back" }.min { a, b in
-            if let x = Int(a.id), let y = Int(b.id) { return x < y }
-            return a.id < b.id
+        func lowestID(_ facing: String) -> (id: String, facing: String, focal: Double?)? {
+            found.filter { $0.facing == facing }.min { a, b in
+                if let x = Int(a.id), let y = Int(b.id) { return x < y }
+                return a.id < b.id
+            }
         }
-        return found.map { camera in
-            let label: String
+        let mains = ["back": lowestID("back"), "front": lowestID("front")]
+        var kept: [(facing: String, focal: Double)] = []
+        var labels: Set<String> = []
+        return found.compactMap { camera in
+            // Samsung lists its front camera twice (ids 1 and 3, same lens, a smaller crop on 3): one entry is enough.
+            if let focal = camera.focal {
+                if kept.contains(where: { $0.facing == camera.facing && $0.focal == focal }) { return nil }
+                kept.append((camera.facing, focal))
+            }
+            let main = mains[camera.facing] ?? nil
+            let ratio = camera.focal.flatMap { focal in main?.focal.flatMap { $0 > 0 ? focal / $0 : nil } }
+            let side = camera.facing == "front" ? "Front" : "Back"
+            var label: String
             switch camera.facing {
-            case "front": label = "Front"
-            case "external": label = "External"
-            case "back":
-                let ratio = camera.focal.flatMap { focal in main?.focal.flatMap { $0 > 0 ? focal / $0 : nil } }
+            case "front", "back":
                 if camera.id == main?.id {
-                    label = "Back · Main"
+                    label = camera.facing == "front" ? "Front" : "Back · Main"
                 } else if let ratio, ratio < 0.8 {
-                    label = "Back · Ultra Wide"
+                    label = camera.facing == "front" ? "Front · Wide" : "Back · Ultra Wide"
                 } else if let ratio, ratio > 1.4 {
-                    label = "Back · \(max(2, Int(ratio.rounded())))x"
+                    label = "\(side) · \(max(2, Int(ratio.rounded())))x"
                 } else {
-                    label = "Back · Camera \(camera.id)"
+                    label = "\(side) · Camera \(camera.id)"
                 }
+            case "external": label = "External"
             default: label = "Camera \(camera.id)"
             }
+            if labels.contains(label) { label = "\(camera.facing == "external" ? "External" : side) · Camera \(camera.id)" }
+            labels.insert(label)
             return CameraLens(id: camera.id, facing: camera.facing, label: label)
         }
     }
@@ -591,11 +608,11 @@ final class CaptureController {
                     // The lens just switched to couldn't start in this mode, and the call keeps the one that worked.
                 } catch let error as TransportError where !shouldStop && hasStreamed && !serverNamedCause {
                     fputs("Phone session ended. \(error.logText)\n", stderr)
-                    report("Reconnecting to \(device.model). \(error.message)", active: true)
+                    report("Reconnecting to \(device.displayName). \(error.message)", active: true)
                     guard waitForDevice(device.serial) else { break }
                     continue
                 }
-                report("Switching camera on \(device.model)...", active: true)
+                report("Switching camera on \(device.displayName)...", active: true)
             }
             return "Webcam stopped"
         } catch {
@@ -612,7 +629,10 @@ final class CaptureController {
 
     /// The phone server's error lines, said plainly. Nil when they don't name a cause the user can act on.
     static func explainServer(_ text: String) -> String? {
-        if text.contains("CAMERA_IN_USE") || text.contains("in use already") || text.contains("MAX_CAMERAS_IN_USE") {
+        // Samsung's own Camera app takes the camera away ("Camera disconnected"), then leaves no room to reopen it
+        // ("The system-wide limit for number of open cameras has been reached"). Reconnecting would fight the user's app.
+        if text.contains("CAMERA_IN_USE") || text.contains("in use already") || text.contains("MAX_CAMERAS_IN_USE")
+            || text.contains("Camera disconnected") || text.contains("number of open cameras") {
             return "Another app on the phone is using the camera. Close it and start again."
         }
         if text.contains("CAMERA_DISABLED") {
@@ -764,7 +784,9 @@ final class CaptureController {
                 pending += String(decoding: chunk, as: UTF8.self)
                 var lines = pending.components(separatedBy: "\n")
                 pending = lines.removeLast()
-                for line in lines where line.contains("ERROR") { self?.noteServerError(line) }
+                for line in lines where line.contains("ERROR") || line.contains("Exception:") || line.contains("Camera disconnected") {
+                    self?.noteServerError(line)
+                }
             }
             logDone.signal()
         }.start()

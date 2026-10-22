@@ -69,6 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var lenses: [String: [CameraLens]] = [:]
     /// Phones whose lenses were listed, or are being listed, since they were plugged in.
     private var lensQueries: Set<String> = []
+    /// Phones whose own names were asked for this run; phoneNames keeps the answers.
+    private var nameQueries: Set<String> = []
+    private var phoneNames: [String: String] = [:]
     /// A phone that start on plug-in leaves alone until it's unplugged.
     private var autoStartBlocked: String?
     /// How long that phone has been gone from adb's list, so a blink around a Mac wake doesn't count as an unplug.
@@ -459,7 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if capture.running, let device = runDevice {
             let mode = Self.shortTitle(CaptureMode.all[runModeIndex])
             var content = MenuHeaderView.Content(dot: .wait, status: "Starting", picture: nil,
-                                                 model: device.model, stats: stats, note: note)
+                                                 model: device.displayName, stats: stats, note: note)
             if stopRequested {
                 content.status = "Stopping"
                 content.picture = .init(veil: .init(title: "Stopping the webcam"))
@@ -470,16 +473,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 content.picture = .init(badge: "LIVE \(time)")
             } else if switchingLens {
                 content.status = "Switching camera"
-                content.picture = .init(veil: .init(title: "Switching camera on \(device.model)", text: "The camera stays open for your call."))
+                content.picture = .init(veil: .init(title: "Switching camera on \(device.displayName)", text: "The camera stays open for your call."))
             } else if liveSince != nil {
                 content.status = "Reconnecting"
                 // The stream can drop with the phone still plugged in, for example when its camera server restarts.
                 content.picture = listedDevices.contains(where: { $0.serial == device.serial && $0.authorized })
-                    ? .init(veil: .init(title: "Reconnecting to \(device.model)", text: "The camera stays open for your call."))
+                    ? .init(veil: .init(title: "Reconnecting to \(device.displayName)", text: "The camera stays open for your call."))
                     : .init(veil: .init(title: "Plug the phone back in",
                                         text: "The camera stays open for your call and picks up again on its own."))
             } else {
-                content.picture = .init(veil: .init(title: "Starting \(device.model)",
+                content.picture = .init(veil: .init(title: "Starting \(device.displayName)",
                                                     text: "The phone's camera can take a few seconds to open."))
             }
             return content
@@ -492,7 +495,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return .init(dot: .off, status: "\(setup.doneCount) of \(setup.steps.count) setup steps done", picture: nil,
                          model: nil, stats: nil, note: lines.joined(separator: "\n"))
         }
-        let model = devices.first { $0.serial == selectedSerial }?.model
+        let model = devices.first { $0.serial == selectedSerial }?.displayName
         return .init(dot: .ready, status: "Ready",
                      picture: .init(veil: .init(title: model.map { "\($0) is ready" } ?? "Ready",
                                                 text: "Start the webcam to see the picture.")),
@@ -500,13 +503,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func rebuildPhoneMenu() {
-        let key = devices.map { "\($0.serial) \($0.status) \($0.model)" }.joined(separator: ",")
+        let key = devices.map { "\($0.serial) \($0.status) \($0.displayName)" }.joined(separator: ",")
             + "|\(selectedSerial ?? "")|\(capture.running)"
         guard key != phoneMenuKey else { return }
         phoneMenuKey = key
         phoneMenu.removeAllItems()
         for (index, device) in devices.enumerated() {
-            let title = device.authorized ? device.model : "\(device.model) (\(Self.statusAdvice(device.status)))"
+            let title = device.authorized ? device.displayName : "\(device.displayName) (\(Self.statusAdvice(device.status)))"
             let item = NSMenuItem(title: title, action: #selector(selectPhone(_:)), keyEquivalent: "")
             item.target = self
             item.tag = index
@@ -629,7 +632,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func devicesChanged(_ result: Result<[AndroidDevice], Error>) {
         devicesKnown = true
         switch result {
-        case let .success(devices):
+        case let .success(listed):
+            let devices = listed.map { device in
+                var named = device
+                named.name = phoneNames[device.serial]
+                return named
+            }
             let savedSerial = Prefs.defaults.string(forKey: Prefs.serial)
             // Compared with adb's last good list, so a failed stream in between doesn't look like a fresh plug-in.
             let savedWasAllowed = listedDevices.contains { $0.serial == savedSerial && $0.authorized }
@@ -673,7 +681,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             discoveryError = error.localizedDescription
         }
         lensQueries.formIntersection(Set(devices.map(\.serial)))
-        for device in devices where device.authorized { queryLenses(device.serial) }
+        for device in devices where device.authorized { queryLenses(device.serial); queryName(device.serial) }
         setupChanged()
     }
 
@@ -730,13 +738,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                       more: ["If macOS doesn't ask, click Start Virtual Camera in OBS, then Yes when it asks about video sources.",
                              "If OBS then says it couldn't find the virtual camera, click OK. You don't need to restart."]),
             SetupStep(id: "phone", title: "Plug in your phone", done: phone != nil,
-                      help: phone.map { "\($0.model) is plugged in." } ?? phoneError
+                      help: phone.map { "\($0.displayName) is plugged in." } ?? phoneError
                         ?? "Use a USB cable that carries data. Some cables only charge.",
                       next: phoneError ?? "plug in your phone with a USB cable.",
                       tip: "Phone plugged in but not showing up? USB debugging has to be on first.",
                       more: debuggingHowTo),
             SetupStep(id: "debugging", title: "Allow USB debugging", done: allowed != nil,
-                      help: allowed.map { "Allowed on \($0.model)." } ?? debugging.help,
+                      help: allowed.map { "Allowed on \($0.displayName)." } ?? debugging.help,
                       next: debugging.next,
                       more: debuggingHowTo),
             // Done only once OBS is there: "OBS is closed" reads oddly before it's installed.
@@ -800,6 +808,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     self.lensQueries.remove(serial)
                     fputs("Could not list the phone's cameras. \(error.logText)\n", stderr)
                 }
+                self.refreshUI()
+            }
+        }
+    }
+
+    /// Reads the name the phone's owner gave it (Settings > About phone), once per run, off main. A phone without
+    /// one keeps adb's model code.
+    private func queryName(_ serial: String) {
+        guard !nameQueries.contains(serial) else { return }
+        nameQueries.insert(serial)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let answer = (try? ADB.command(["-s", serial, "shell", "settings", "get", "global", "device_name"], timeout: 5))?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard !answer.isEmpty, answer != "null", answer.count <= 60 else { return }
+                self.phoneNames[serial] = answer
+                func named(_ device: AndroidDevice) -> AndroidDevice {
+                    var named = device
+                    if device.serial == serial { named.name = answer }
+                    return named
+                }
+                self.devices = self.devices.map(named)
+                self.listedDevices = self.listedDevices.map(named)
+                if self.runDevice?.serial == serial { self.runDevice?.name = answer }
+                self.updateSetup()
                 self.refreshUI()
             }
         }

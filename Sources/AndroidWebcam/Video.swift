@@ -192,7 +192,7 @@ final class HEVCDecoder {
             guard let ref else { return }
             let decoder = Unmanaged<HEVCDecoder>.fromOpaque(ref).takeUnretainedValue()
             if status != noErr { decoder.onError(WebcamError(message: Plain.decode, detail: "VideoToolbox returned error \(status).")) }
-            else if let image { decoder.logFirstFrame(image); decoder.onFrame(image) }
+            else if let image { decoder.logFirstFrame(image); HEVCDecoder.tagStandardMatrix(image); decoder.onFrame(image) }
         }, decompressionOutputRefCon: Unmanaged.passUnretained(self).toOpaque())
         var created: VTDecompressionSession?
         try checkStatus(VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: format,
@@ -222,6 +222,18 @@ final class HEVCDecoder {
         fputs("First frame \(CVPixelBufferGetWidth(image))x\(CVPixelBufferGetHeight(image)) \(fourCC)"
             + " matrix=\(tag(kCVImageBufferYCbCrMatrixKey)) primaries=\(tag(kCVImageBufferColorPrimariesKey))"
             + " transfer=\(tag(kCVImageBufferTransferFunctionKey))\n", stderr)
+    }
+
+    private static let namedMatrices = Set([kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVImageBufferYCbCrMatrix_ITU_R_601_4,
+        kCVImageBufferYCbCrMatrix_SMPTE_240M_1995, kCVImageBufferYCbCrMatrix_ITU_R_2020].map { $0 as String })
+
+    /// The S25 Ultra tags its video BT.470BG (matrix 5), which VideoToolbox passes on as "YCbCrMatrix#5". Recorders
+    /// (QuickTime, AVCaptureMovieFileOutput) copy the tag to their encoder, which refuses it with -12902 and stops
+    /// with "Cannot Record". BT.470BG uses the BT.601 coefficients, so the frame is tagged with that name instead.
+    static func tagStandardMatrix(_ image: CVImageBuffer) {
+        guard let matrix = CVBufferCopyAttachment(image, kCVImageBufferYCbCrMatrixKey, nil) as? String,
+              !namedMatrices.contains(matrix) else { return }
+        CVBufferSetAttachment(image, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_601_4, .shouldPropagate)
     }
 
     private func endSession() {
