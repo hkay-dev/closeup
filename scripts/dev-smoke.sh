@@ -62,12 +62,13 @@ real_after="$(defaults read "$domain" startOnPlugIn 2>&1)"
 [[ "$real_before" == "$real_after" ]] && check ok "the real app's startOnPlugIn is unchanged ($real_after)" \
     || check bad "the real app's startOnPlugIn changed from $real_before to $real_after"
 
-# Image Settings and Check Audio Sync: read both
-"$dev" choose "Image Settings" >/dev/null
-image="$("$dev" text image)"
-say "image settings text:"
-jq -r '.text[] | "  " + .' <<<"$image"
-ok_if "Image Settings shows Reset to Automatic" jq -e '.text | any(test("Reset to Automatic"))' <<<"$image"
+# Live Controls and Check Audio Sync: read both
+"$dev" choose "Live Controls" >/dev/null
+controls="$("$dev" text controls)"
+say "live controls text:"
+jq -r '.text[] | "  " + .' <<<"$controls"
+ok_if "Live Controls shows Reset to Automatic" jq -e '.text | any(test("Reset to Automatic"))' <<<"$controls"
+ok_if "Live Controls says what to do before lenses work" jq -e '.text | any(test("Start the webcam|once the picture is live|Hold a zoom button"))' <<<"$controls"
 "$dev" choose "Check Audio Sync" >/dev/null
 sync="$("$dev" text sync)"
 say "check audio sync text:"
@@ -75,7 +76,7 @@ jq -r '.text[] | "  " + .' <<<"$sync"
 ok_if "Check Audio Sync shows its Start button" jq -e '.text | any(test("\\[Button.*\\] Start$"))' <<<"$sync"
 
 # PNGs of all four windows
-names=(setup settings image sync)
+names=(setup settings controls sync)
 for name in "${names[@]}"; do
     "$dev" shot "$name" "$out/$name.png" >"$out/shot-$name.json"
     say "shot $name: $(jq -c '{backend, width, height, notes}' "$out/shot-$name.json")"

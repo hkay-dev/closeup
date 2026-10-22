@@ -240,7 +240,7 @@ struct SetupView: View {
 
 // MARK: Image settings
 
-/// The saved phone and Mac image settings. onChange runs on main after every change.
+/// The saved phone and Mac image settings, which the Live Controls panel changes. onChange runs on main after every change.
 final class ImageSettingsStore: ObservableObject {
     @Published var phone: PhoneImageSettings { didSet { save() } }
     @Published var macSharpness: Double { didSet { save() } }
@@ -261,63 +261,6 @@ final class ImageSettingsStore: ObservableObject {
         if let data = try? JSONEncoder().encode(phone) { Prefs.defaults.set(data, forKey: Prefs.imageSettings) }
         Prefs.defaults.set(macSharpness, forKey: Prefs.macSharpness)
         onChange()
-    }
-}
-
-struct ImageSettingsView: View {
-    @ObservedObject var store: ImageSettingsStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Form {
-                Section("On the phone") {
-                    LabeledContent("Exposure") {
-                        HStack {
-                            Slider(value: $store.phone.exposureEV, in: -2...2, step: 1.0 / 3.0)
-                            Text(store.phone.exposureEV.magnitude < 0.05 ? "0 EV" : String(format: "%+.1f EV", store.phone.exposureEV))
-                                .monospacedDigit().frame(width: 56, alignment: .trailing)
-                        }
-                    }
-                    Picker("White balance", selection: $store.phone.whiteBalance) {
-                        ForEach(WhiteBalance.allCases, id: \.self) { Text($0.rawValue.capitalized) }
-                    }
-                    Picker("Focus", selection: $store.phone.focus) {
-                        Text("Continuous").tag(FocusMode.continuous)
-                        Text("Locked").tag(FocusMode.locked)
-                    }
-                    Picker("Noise reduction", selection: $store.phone.noiseReduction) { levels }
-                    Picker("Sharpness", selection: $store.phone.sharpness) { levels }
-                }
-                Section("On the Mac") {
-                    LabeledContent("Extra sharpening") {
-                        HStack {
-                            Slider(value: $store.macSharpness, in: 0...1)
-                            Text(store.macSharpness == 0 ? "Off" : String(format: "%.0f%%", store.macSharpness * 100))
-                                .monospacedDigit().frame(width: 56, alignment: .trailing)
-                        }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            // A grouped form scrolls and has no height of its own, so the window would hide every control.
-            .scrollDisabled(true)
-            .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Text("Changes apply while live. Reset returns everything to the phone's automatic settings.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                Button("Reset to Automatic") { store.reset() }
-            }
-            .padding([.horizontal, .bottom], 20)
-        }
-        .frame(width: 460)
-    }
-
-    @ViewBuilder private var levels: some View {
-        Text("Off").tag(ProcessingLevel.off)
-        Text("Fast").tag(ProcessingLevel.fast)
-        Text("High quality").tag(ProcessingLevel.highQuality)
     }
 }
 

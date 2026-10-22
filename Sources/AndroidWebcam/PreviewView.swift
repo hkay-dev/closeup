@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreMedia
+import SwiftUI
 
 /// Video in a sample buffer layer, with a veil of white text on a dark wash for the moments without a live picture.
 /// The menu header and the preview window both use it.
@@ -99,11 +100,26 @@ final class PreviewView: NSView {
     }
 }
 
-/// The app's two motions: a short ease-out fade between states, and a slow pulse for something live or waiting.
-/// Both turn off under Reduce Motion.
+/// The app's motions: a short ease-out fade between states, a slow pulse for something live or waiting, and the
+/// Live Controls panel's springs (the swift-motion package's tokens). All of them turn off under Reduce Motion.
 enum Motion {
     static let duration: CFTimeInterval = 0.2
     static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    /// Something arriving in answer to a click: the panel opening.
+    static let entrance = Animation.spring(response: 0.3, dampingFraction: 0.86)
+    /// A value or a selection changing in place, with whatever resizes for it.
+    static let stageChange = Animation.spring(response: 0.38, dampingFraction: 0.9)
+    /// Words that leave go quickly; their replacement waits a beat, so the two don't overlap into mush.
+    static let outgoing = Animation.easeOut(duration: 0.1)
+    static let incomingDelay: TimeInterval = 0.08
+    static var swap: AnyTransition {
+        reduced ? .identity : .asymmetric(insertion: .opacity.animation(stageChange.delay(incomingDelay)),
+                                          removal: .opacity.animation(outgoing))
+    }
+
+    /// The animation, or none under Reduce Motion.
+    static func allowed(_ animation: Animation) -> Animation? { reduced ? nil : animation }
 
     static func pulse(_ layer: CALayer?, _ on: Bool) {
         guard let layer else { return }
