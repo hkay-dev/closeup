@@ -92,16 +92,15 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         DevMode.directory?.appendingPathComponent("Applications", isDirectory: true) ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
     }
 
-    /// OBS Studio if it's installed in Applications (/Applications or ~/Applications), where Launch Services knows it,
-    /// or the copy this app put in place. Copies on a mounted image, in the Trash or in Downloads don't count, since
-    /// OBS's camera only turns on from Applications.
+    /// OBS Studio if it's installed in /Applications, where Launch Services knows it, or the copy this app put in
+    /// place. Copies on a mounted image, in ~/Applications, the Trash or Downloads don't count, since macOS only turns
+    /// on a camera extension from an app in /Applications.
     static func installedOBS() -> URL? {
         let copy = applicationsDirectory.appendingPathComponent("OBS.app")
         let ownCopy = FileManager.default.fileExists(atPath: copy.path) ? copy : nil
         if bareMac { return ownCopy }
-        let folders = ["/Applications/", NSHomeDirectory() + "/Applications/"]
         let known = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: obsBundleID).first { url in
-            !url.lastPathComponent.hasPrefix(".") && folders.contains { url.path.hasPrefix($0) }
+            !url.lastPathComponent.hasPrefix(".") && url.path.hasPrefix("/Applications/")
         }
         return known ?? ownCopy
     }
