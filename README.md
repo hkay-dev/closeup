@@ -19,32 +19,36 @@ It has run live with a Galaxy S25 Ultra into a video call and a QuickTime record
 
 ## Get the app
 
-There's no signed download yet. Build it yourself (see [Build](#build)), or download `Android-Webcam.dmg` from a [release](https://github.com/hkay-dev/android-webcam/releases), open it and drag **Android Webcam** into **Applications**. Open it from Applications, not from the disk image or Downloads.
+There's no signed download yet. Build it yourself (see [Build](#build)), or download `Android-Webcam.dmg` from a [release](https://github.com/hkay-dev/android-webcam/releases). Open it, drag **Android Webcam** onto the **Applications** folder next to it, then eject the disk image. Open the app from Applications, not from the disk image or Downloads.
 
 The app is ad-hoc signed and not notarized, so macOS blocks the first open:
 
-1. Double-click the app. macOS says it can't check it; click **Done**.
-2. Open **System Settings › Privacy & Security**, scroll to Security and click **Open Anyway**. The button shows for about an hour after step 1.
-3. Click **Open Anyway** in the dialog that follows and enter your password.
+1. Double-click the app. macOS says "“Android Webcam” Not Opened"; click **Done**.
+2. Open **System Settings › Privacy & Security** (scroll down the sidebar to find it), then scroll to the bottom of the page. Next to "“Android Webcam” was blocked to protect your Mac", click **Open Anyway**. The button shows for about an hour after step 1.
+3. In the "Open “Android Webcam”?" dialog, click **Open Anyway**. The password box takes a few seconds to appear; enter your password. The app opens and Setup appears.
 
 Each new version is a new unsigned build, so you do this again after an update.
 
 ## First run
 
-The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through six steps, each with a button that does the work:
+The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through six steps, each with a button that does the work. On a fresh Mac it takes about 10 minutes, most of it in OBS's first launch.
 
-1. **Get Android platform tools.** Click **Download Platform Tools**. It goes into the app's own folder in Application Support, nothing system-wide.
-2. **Install OBS Studio.** Click **Download OBS**. The app gets the latest release from OBS's GitHub page, checks that the OBS Project signed it, and puts it in Applications. If you already have OBS, this step is done.
-3. **Turn on OBS's camera.** Click **Open OBS**, then **Start Virtual Camera** in OBS. macOS asks you to allow OBS's camera extension: click **Open System Settings** and turn on OBS. Quit OBS. You only do this once.
-4. **Plug in your phone** with the USB cable.
-5. **Allow USB debugging.** The phone asks whether to allow this Mac; tap **Allow**. If it doesn't ask, turn on Developer options first: **Show me how** in Setup lists the taps.
-6. **Close OBS Studio.** The app and OBS can't both feed the camera.
+1. **Get Android platform tools.** Click **Download Platform Tools**. It goes into the app's own folder in Application Support, nothing system-wide. macOS may ask whether the app can find devices on local networks: **Don't Allow** is fine, USB doesn't need it.
+2. **Install OBS Studio.** Click **Download OBS**. The app gets the latest release from OBS's GitHub page (about 150 MB), checks that the OBS Project signed it, and puts it in Applications. If you already have OBS, this step is done.
+3. **Turn on OBS's camera.** Click **Open OBS**. You only do this once.
+   - OBS's first launch shows a permissions window (click **Continue**; you don't need to grant anything) and an Auto-Configuration Wizard (click **Cancel**). You don't need to add anything in OBS.
+   - macOS asks to allow OBS's camera extension: click **Open System Settings** and turn on OBS. Click the switch once and wait; the password box takes a few seconds. If macOS doesn't ask, click **Start Virtual Camera** in OBS.
+   - If OBS then says it couldn't find the virtual camera and suggests a restart, click OK. You don't need to restart.
+   - Quit OBS. The app notices the camera is on, reopens itself once, and moves to the next step.
+4. **Plug in your phone** with a cable that carries data, not just power.
+5. **Allow USB debugging.** The phone asks whether to allow this Mac; tap **Allow**. If the phone doesn't show up or doesn't ask, USB debugging is off: **Show me how** in Setup lists the taps for Developer options.
+6. **Close OBS Studio.** The app and OBS can't both feed the camera. OBS can stay installed.
 
 Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose **OBS Virtual Camera** as the camera.
 
 ## Using it
 
-- **Start Webcam** and **Stop Webcam** are at the top of the menu. The header shows the live picture, how long it's been live, and the phone's temperature and battery.
+- **Start Webcam** and **Stop Webcam** are at the top of the menu once a phone is ready; until then that spot says **Finish Setup…** and the next step. The header shows the live picture, how long it's been live, and the phone's temperature and battery.
 - **Capture Mode** picks 1080p at 30 fps (the default, and the coolest for the phone), 1080p at 60, 4K at 60, or an experimental 1080p at 120. Phones differ; if one can't run a mode, the app says so instead of quietly picking another.
 - **Live Controls** (⌃⌥⌘L from any app) opens a small floating panel that stays above your call and never takes its keyboard, so mute and push-to-talk keep working: switch lenses, zoom (hold to keep zooming), turn on the flashlight, and set exposure, white balance, focus and sharpening while you're live. When the webcam is off it has a Start Webcam button. Settings stay for the next call.
 - **Show Preview** opens a picture-only window, separate from what call apps see.
@@ -89,21 +93,22 @@ Open an issue at https://github.com/hkay-dev/android-webcam/issues; the bug form
 - `~/Library/Application Support/Android Webcam/platform-tools/`: the adb that Setup downloads.
 - `~/Library/Application Support/com.harsha.android-webcam/session.json`: what the last session started, so the next launch can clean up after a crash.
 - `~/Library/Preferences/com.harsha.android-webcam.plist`: settings.
+- `~/Library/Caches/com.harsha.android-webcam` and `~/Library/HTTPStorages/com.harsha.android-webcam`: macOS's own download cache for Setup's downloads.
 - `~/.android/adbkey` and `adbkey.pub`: adb's key, which your phone trusts. adb writes these, and any other Android tool on the Mac shares them.
 - `/Applications/OBS.app`, if Setup installed OBS.
 - On the phone, `/data/local/tmp/android-webcam-*.jar` while the webcam runs; the app removes it.
 
 ## Uninstall
 
-1. In Settings, turn off **Launch at login**, then quit the app.
-2. Stop the adb server, which keeps running after the app quits:
+1. Quit the app from its menu. If you turned on **Launch at login**, turn it off in Settings first.
+2. Open Terminal and stop the adb server, which keeps running after the app quits:
    `"$HOME/Library/Application Support/Android Webcam/platform-tools/adb" kill-server`
 3. Delete the app and its files:
    ```sh
-   rm -rf "/Applications/Android Webcam.app" "$HOME/Library/Application Support/Android Webcam" "$HOME/Library/Application Support/com.harsha.android-webcam"
+   rm -rf "/Applications/Android Webcam.app" "$HOME/Library/Application Support/Android Webcam" "$HOME/Library/Application Support/com.harsha.android-webcam" "$HOME/Library/Caches/com.harsha.android-webcam" "$HOME/Library/HTTPStorages/com.harsha.android-webcam"
    defaults delete com.harsha.android-webcam
    ```
-4. If you don't use OBS otherwise, drag OBS to the Trash; macOS offers to remove its camera extension too.
+4. If you don't use OBS otherwise, drag OBS to the Trash. Finder says OBS is hosting a system extension: click **Continue** and enter your password. The camera extension is fully gone after the next restart.
 5. On the phone, open **Settings › Developer options**, tap **Revoke USB debugging authorizations**, and turn off USB debugging.
 
 ## Privacy
