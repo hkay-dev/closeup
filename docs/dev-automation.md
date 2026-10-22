@@ -94,6 +94,15 @@ Start Webcam, the lens, zoom and flashlight items, a hot phone and the error jou
 
 The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated) on port 5920, booted inside the `emu` line (repo `AGENTS.md`). Its camera 1 (Front) runs 1080p at 30 and 60; camera 0 (Back) can't run 1080p, which makes a lens switch that fails. Neither runs 4K or 120 fps, which drives the mode errors. `dumpsys battery set temp 450` makes it hot.
 
+## README screenshots
+
+The PNGs in `docs/assets/` (`setup.png`, `setup-done.png`, `live-controls.png`, `settings.png`, `audio-sync.png`) are `shot`s of the dev instance, retaken on 2026-10-22. Two things keep them free of this Mac's details:
+
+- adb from a tidy path. Setup's first step prints the folder adb came from, so `ADB=$PWD/scripts/fault-adb` shows the checkout's path. Link `/tmp/awhome/Library/Android/sdk/platform-tools/adb` to `scripts/fault-adb`, point `ADB` at the link and start the instance with `CFFIXED_USER_HOME=/tmp/awhome`: Foundation takes that as the home folder, so the step reads `Found adb in ~/Library/Android/sdk/platform-tools.` `fault-adb` still finds the real adb through `$HOME`.
+- A phone name. The emulator lists as `Android SDK built for arm64`. Leave out its `usb` rule and list it under a made-up name instead: `device 3A281FDJH00XYZ device usb:1-1 product:shiba model:Pixel_8 device:shiba` and `alias 3A281FDJH00XYZ emulator-5920`, with `lenses.3A281FDJH00XYZ` seeded. Hide any other phone adb lists (`hide SERIAL`).
+
+The emulator's camera shows a blocky test picture, so Live Controls is shot in the Ready state. Check Audio Sync is shot while live (no Start Webcam row) after `ctl sync-phase phase=result lagMs:=118`. Setup mid-way is a separate `ANDROID_WEBCAM_DEV_BARE=1` instance.
+
 ## Limits
 
 - The dev instance records notifications rather than posting them, so it can't show that one replaces or withdraws another; that needs the bundled app.
