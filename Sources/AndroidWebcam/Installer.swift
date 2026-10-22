@@ -36,6 +36,9 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     var canCancel: Bool { if case .downloading = phase { true } else { false } }
 
+    var isWaiting: Bool { if case .waiting = phase { true } else { false } }
+    private var verifying = false
+
     func start() {
         guard !busy else { return }
         attempt += 1
@@ -89,14 +92,16 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         DevMode.directory?.appendingPathComponent("Applications", isDirectory: true) ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
     }
 
-    /// OBS Studio if it's installed: where Launch Services knows it, or the copy this app put in place. A copy on a
-    /// mounted disk image (/Volumes) doesn't count, since OBS's camera only turns on from Applications.
+    /// OBS Studio if it's installed in Applications (/Applications or ~/Applications), where Launch Services knows it,
+    /// or the copy this app put in place. Copies on a mounted image, in the Trash or in Downloads don't count, since
+    /// OBS's camera only turns on from Applications.
     static func installedOBS() -> URL? {
         let copy = applicationsDirectory.appendingPathComponent("OBS.app")
         let ownCopy = FileManager.default.fileExists(atPath: copy.path) ? copy : nil
         if bareMac { return ownCopy }
-        let known = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: obsBundleID).first {
-            !$0.path.hasPrefix("/Volumes/") && !$0.lastPathComponent.hasPrefix(".")
+        let folders = ["/Applications/", NSHomeDirectory() + "/Applications/"]
+        let known = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: obsBundleID).first { url in
+            !url.lastPathComponent.hasPrefix(".") && folders.contains { url.path.hasPrefix($0) }
         }
         return known ?? ownCopy
     }
@@ -168,7 +173,13 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         guard task.taskDescription == String(attempt), let error else { return }
         self.task = nil
         self.session = nil
-        if (error as? URLError)?.code == .cancelled { return }
+        let code = (error as? URLError)?.code
+        if code == .cancelled { return }
+        if let code, [.cannotWriteToFile, .cannotCreateFile, .cannotOpenFile].contains(code) {
+            fail(WebcamError(message: "There isn't room on this Mac for the download. Free some space, then try again.",
+                             detail: error.localizedDescription))
+            return
+        }
         fail(WebcamError(message: "The download stopped. Check that the Mac is online, then try again.",
                          detail: error.localizedDescription))
     }
@@ -188,6 +199,7 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let fileManager = FileManager.default
         let parent = supportDirectory
         try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+        sweep(parent) { $0.hasPrefix(".platform-tools-") }
         let staging = parent.appendingPathComponent(".platform-tools-\(UUID().uuidString)", isDirectory: true)
         defer { try? fileManager.removeItem(at: staging) }
         let unzip = run("/usr/bin/ditto", ["-x", "-k", zip.path, staging.path])
@@ -215,6 +227,14 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let destination = platformToolsDirectory
         if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
         try fileManager.moveItem(at: tools, to: destination)
+    }
+
+    /// Removes what a crashed or force-quit install left behind: only the hidden names this installer makes.
+    private static func sweep(_ directory: URL, _ isLeftover: (String) -> Bool) {
+        let fileManager = FileManager.default
+        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [] where isLeftover(name) {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        }
     }
 
     // MARK: OBS
@@ -301,6 +321,7 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
         // Copied under a hidden name and renamed, so a half-done copy never counts as installed.
         let destination = applications.appendingPathComponent("OBS.app")
+        sweep(applications) { $0.hasPrefix(".OBS-") && $0.hasSuffix(".app") }
         let partial = applications.appendingPathComponent(".OBS-\(UUID().uuidString).app")
         track(copy: partial)
         defer { try? FileManager.default.removeItem(at: partial); track(copy: nil) }
@@ -340,14 +361,24 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         if let partial { try? FileManager.default.removeItem(at: partial) }
     }
 
-    /// The step is done (OBS reached Applications): eject an image left mounted for the drag.
-    func stepDone() {
-        guard kind == .obs, !busy else { return }
-        if case .waiting = phase { phase = .idle }
-        Self.mountLock.lock()
-        let open = !Self.mounts.isEmpty
-        Self.mountLock.unlock()
-        if open { DispatchQueue.global(qos: .utility).async { Self.cleanUp() } }
+    /// While the user drags OBS in by hand, checks the copy in Applications off main, one check at a time. Finder writes
+    /// under the final name as it copies, and `codesign --verify --deep` fails until the copy is whole. Once it passes:
+    /// idle, eject the image, and tell Setup.
+    func checkDraggedCopy() {
+        guard kind == .obs, isWaiting, !verifying else { return }
+        verifying = true
+        let current = attempt
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let ok = (try? Self.verifyOBS(Self.applicationsDirectory.appendingPathComponent("OBS.app"))) != nil
+            if ok { Self.cleanUp() }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.verifying = false
+                guard ok, self.attempt == current, self.isWaiting else { return }
+                self.phase = .idle
+                self.onInstalled()
+            }
+        }
     }
 
     /// Passes when the app's signature holds and it's signed by the OBS Project through Apple, not just any certificate
