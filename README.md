@@ -2,6 +2,11 @@
 
 Use your Android phone's camera as your Mac's webcam, over a USB cable. There's no app to install on the phone, no account and no cloud: the Mac talks to the phone's camera directly and hands the picture to any call or recording app.
 
+<p align="center">
+  <img src="docs/assets/live-controls.png" width="320" alt="Live Controls: lens chips, zoom, flashlight, exposure, white balance, focus and sharpening">
+  <img src="docs/assets/setup.png" width="470" alt="Setup walks you through six steps, each with a button that does the work">
+</p>
+
 It has run live with a Galaxy S25 Ultra into a video call and a QuickTime recording. Most menu, setup, error and reconnect paths have also been driven against an Android emulator; [docs/phone-session.md](docs/phone-session.md) lists what still needs a real phone.
 
 ## What you need
@@ -45,6 +50,11 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 - **Show Preview** opens a picture-only window, separate from what call apps see.
 - **Check Audio Sync** times a clap to measure how far the video lags the sound, so you can set an audio delay in your call or recording app.
 - **Settings** has Launch at login, Start when the phone is plugged in, notifications and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, and **Run Setup Again**.
+
+<p align="center">
+  <img src="docs/assets/settings.png" width="400" alt="Settings: General, Live Controls shortcut and Help with Copy Diagnostics">
+  <img src="docs/assets/audio-sync.png" width="400" alt="Check Audio Sync: clap once and it says how far the video is behind the sound">
+</p>
 
 If the cable comes loose mid-call, the call keeps its camera and the picture comes back on its own when you plug the phone back in. If the phone runs hot, a notification offers to switch to 1080p at 30 fps.
 
