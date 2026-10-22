@@ -147,21 +147,46 @@ final class MenuHeaderView: NSView {
         applyColors()
     }
 
-    private func applyColors() {
+    private func applyColors(blend: Bool = false) {
+        let blend = blend && window != nil && !Motion.reduced
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let color = (content?.dot ?? .off).color
-            dot.layer?.backgroundColor = color.cgColor
-            statusRow.layer?.backgroundColor = color.withAlphaComponent(0.16).cgColor
+            Self.setColor(dot.layer, color.cgColor, blend: blend)
+            Self.setColor(statusRow.layer, color.withAlphaComponent(0.16).cgColor, blend: blend)
             picture.layer?.borderColor = NSColor.separatorColor.cgColor
         }
     }
 
+    /// Sets a layer's fill, blending from the old one over the AppKit fade when asked.
+    private static func setColor(_ layer: CALayer?, _ color: CGColor, blend: Bool) {
+        guard let layer else { return }
+        if blend, let from = layer.presentation()?.backgroundColor ?? layer.backgroundColor {
+            let animation = CABasicAnimation(keyPath: "backgroundColor")
+            animation.fromValue = from
+            animation.toValue = color
+            animation.duration = Motion.duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(animation, forKey: "color")
+        }
+        layer.backgroundColor = color
+    }
+
+    /// The status without its numbers: "Live 0:42 · 1080p · 30" and "Live 0:43 · 1080p · 30" are one state, whose
+    /// words change in place, while Starting to Live swaps them.
+    static func stage(of status: String) -> String { status.filter { !$0.isNumber } }
+
     func update(_ content: Content) {
         guard content != self.content else { return }
+        let old = self.content
         self.content = content
 
-        applyColors()
-        statusLabel.stringValue = content.status
+        applyColors(blend: old != nil && old?.dot != content.dot)
+        let status = { self.statusLabel.stringValue = content.status }
+        if let old, Self.stage(of: old.status) != Self.stage(of: content.status) {
+            swapContents(of: statusLabel, status)
+        } else {
+            status()
+        }
 
         picture.isHidden = content.picture == nil
         picture.setVeil(content.picture?.veil)
@@ -190,8 +215,11 @@ final class MenuHeaderView: NSView {
             batteryLabel.setAccessibilityLabel("Battery \(stats.batteryPercent) percent\(stats.charging ? ", charging" : "")")
         }
 
-        noteLabel.stringValue = content.note ?? ""
-        noteLabel.isHidden = content.note == nil
+        let note = {
+            self.noteLabel.stringValue = content.note ?? ""
+            self.noteLabel.isHidden = content.note == nil
+        }
+        if old?.note != nil, content.note != nil, old?.note != content.note { swapContents(of: noteLabel, note) } else { note() }
 
         stack.layoutSubtreeIfNeeded()
         setFrameSize(NSSize(width: Self.width, height: stack.fittingSize.height))

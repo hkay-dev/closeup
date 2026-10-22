@@ -47,10 +47,12 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     let picture = PreviewView(frame: NSRect(origin: .zero, size: LiveControlsPanel.pictureSize), titleSize: 13, textSize: 11)
     /// Runs with true when the panel opens and false when it closes.
     var onOpenChange: (Bool) -> Void = { _ in }
-    var isOpen: Bool { panel != nil }
+    /// False while it fades out, so the shortcut pressed again then opens it back up instead of closing it twice.
+    var isOpen: Bool { panel != nil && !closing }
 
     private let store: ImageSettingsStore
     private var panel: NSPanel?
+    private var closing = false
     private var loggedPictureError = false
 
     init(store: ImageSettingsStore) {
@@ -64,7 +66,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     /// Opens the panel, the first time near the top right of `screen` (the status item's). It never takes the call
     /// app's keyboard: buttons and sliders work without the panel becoming key, so mute and push-to-talk keep working.
     func show(on screen: NSScreen?) {
-        if let panel { present(panel); return }
+        if let panel { closing = false; present(panel); enter(panel); return }
         let host = NSHostingController(rootView: LiveControlsView(model: model, store: store, picture: picture))
         host.sizingOptions = [.preferredContentSize]
         let panel = HUDPanel(contentRect: NSRect(x: 0, y: 0, width: LiveControlsView.width, height: 600),
@@ -103,17 +105,53 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         }
         self.panel = panel
         onOpenChange(true)
+        // Clear until its first frame is drawn, at the smaller scale, on this turn's commit; the move starts on the next
+        // turn, so the first thing on screen is the whole panel fading in and never an empty window.
         model.appeared = Motion.reduced
+        panel.alphaValue = Motion.reduced ? 1 : 0
         present(panel)
-        guard !Motion.reduced else { return }
-        // The first frame goes out with the content clear, then it fades and grows in.
-        DispatchQueue.main.async { [weak self] in
-            withAnimation(Motion.entrance) { self?.model.appeared = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self?.panel?.invalidateShadow() }
+        DispatchQueue.main.async { [weak self, weak panel] in
+            guard let self, let panel, self.panel === panel, !self.closing else { return }
+            self.enter(panel)
         }
     }
 
-    func close() { panel?.close() }
+    /// One move in: the whole window fades in, close button and shadow with it, while the content grows to full size
+    /// on the entrance spring. It starts in the same turn as the press, since the panel is already drawn.
+    private func enter(_ panel: NSPanel) {
+        guard !Motion.reduced else { panel.alphaValue = 1; model.appeared = true; return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Motion.entranceFade
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
+        withAnimation(Motion.entrance) { model.appeared = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak panel] in panel?.invalidateShadow() }
+    }
+
+    /// Fades the panel out as it shrinks back a little, then closes it.
+    func close() {
+        guard let panel, !closing else { return }
+        guard !Motion.reduced, panel.isVisible else { panel.close(); return }
+        closing = true
+        withAnimation(Motion.exit) { model.appeared = false }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Motion.exitDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            // Opened again while it faded: show(on:) turned it back, so it stays.
+            guard let self, self.closing, self.panel === panel else { return }
+            panel.close()
+        }
+    }
+
+    /// The close button and Esc go through the same fade.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === panel, !Motion.reduced else { return true }
+        close()
+        return false
+    }
 
     private func present(_ panel: NSPanel) {
         if DevMode.isOn { DevMode.park(panel); return }
@@ -139,6 +177,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === panel else { return }
         panel = nil
+        closing = false
         model.appeared = false
         onOpenChange(false)
     }
@@ -171,7 +210,11 @@ struct LiveControlsView: View {
             livePicture
             statusLines
             if let start = state.start {
-                startButton(start).transition(Motion.swap)
+                // Start Webcam and Finish Setup… share one spot, so one leaves before the other comes in.
+                ZStack {
+                    startButton(start).id(start).transition(Motion.swap)
+                }
+                .transition(Motion.swap)
             }
             cameraModule
             pictureModule
@@ -198,8 +241,10 @@ struct LiveControlsView: View {
         .background(HUDBackground(radius: 18).ignoresSafeArea())
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 1).ignoresSafeArea())
-        .opacity(model.appeared ? 1 : 0)
         .scaleEffect(model.appeared ? 1 : 0.97)
+        // Pinned to the top: the window takes its new size at once, keeping its top edge, while this moves on its spring.
+        // Centered, as it was, the whole panel jumped down by half the change and slid back.
+        .frame(maxHeight: .infinity, alignment: .top)
         .environment(\.colorScheme, .dark)
     }
 
@@ -225,10 +270,17 @@ struct LiveControlsView: View {
             HStack(spacing: 7) {
                 Circle().fill(Color(nsColor: state.dot.color)).frame(width: 8, height: 8)
                     .accessibilityHidden(true)
-                Text(state.status)
-                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                    .lineLimit(1)
+                // A new state swaps the words; the live clock ticking within one changes them in place.
+                ZStack(alignment: .leading) {
+                    Text(state.status)
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                        .lineLimit(1)
+                        .id(MenuHeaderView.stage(of: state.status))
+                        .transition(Motion.swap)
+                }
             }
+            .animation(change, value: MenuHeaderView.stage(of: state.status))
+            .animation(change, value: state.dot)
             HStack(spacing: 10) {
                 if let model = state.model { Text(model).lineLimit(1) }
                 if let stats = state.stats { StatsView(stats: stats) }
@@ -237,14 +289,19 @@ struct LiveControlsView: View {
             .font(.system(size: 11).monospacedDigit())
             .foregroundStyle(.secondary)
             if let note = state.note {
-                Text(note)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(Motion.swap)
+                ZStack(alignment: .topLeading) {
+                    Text(note)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(note)
+                        .transition(Motion.swap)
+                }
+                .transition(Motion.swap)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(change, value: state.note)
         .padding(.horizontal, 2)
         .accessibilityElement(children: .combine)
     }
@@ -410,7 +467,9 @@ struct LiveControlsView: View {
                     .accessibilityValue(store.macSharpness == 0 ? "Off" : String(format: "%.0f percent", store.macSharpness * 100))
             }
 
-            DisclosureGroup(isExpanded: $more.value) {
+            // On the panel's spring, and clipped to its growing frame, so the pickers are uncovered as the space opens
+            // instead of fading in over Reset to Automatic before it has moved down.
+            DisclosureGroup(isExpanded: $more.value.animation(change)) {
                 VStack(alignment: .leading, spacing: 10) {
                     levelPicker("Noise reduction", selection: $store.phone.noiseReduction)
                     levelPicker("Phone sharpness", selection: $store.phone.sharpness)
@@ -419,6 +478,7 @@ struct LiveControlsView: View {
             } label: {
                 Text("More").font(.system(size: 12, weight: .medium))
             }
+            .clipped()
 
             let automatic = store.phone == PhoneImageSettings() && store.macSharpness == 0
             Button { store.reset() } label: {

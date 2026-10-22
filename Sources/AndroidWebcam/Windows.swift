@@ -149,12 +149,9 @@ final class StateBox<Value>: ObservableObject {
     init(_ value: Value) { self.value = value }
 }
 
-/// The springs Setup moves with, from swift-motion's defaults. Off under Reduce Motion.
-private let setupSpring = Animation.spring(response: 0.38, dampingFraction: 0.9)
-
 struct SetupView: View {
     @ObservedObject var model: SetupModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var change: Animation? { Motion.allowed(Motion.stageChange) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -166,22 +163,27 @@ struct SetupView: View {
                 }
             }
             HStack(alignment: .center) {
-                Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                // The hint and the Start button swap as one when the last step turns done.
+                ZStack(alignment: .leading) {
+                    Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .id(model.complete)
+                        .transition(Motion.swap)
+                }
                 Spacer()
                 if model.complete {
                     Button("Start Webcam") { model.start() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        .transition(Motion.swap)
                 }
             }
         }
         .padding(22)
         .frame(width: 470)
-        .animation(reduceMotion ? nil : setupSpring, value: model.steps)
+        .animation(change, value: model.steps)
     }
 
     private var hero: some View {
@@ -195,21 +197,30 @@ struct SetupView: View {
                             .font(.system(size: 22))
                             .foregroundStyle(.white, .green)
                             .offset(x: 3, y: 3)
-                            .transition(.scale.combined(with: .opacity))
+                            .transition(Motion.swap)
                     }
                 }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(model.complete ? "All set" : "Set up \(appName)")
-                    .font(.title2.weight(.semibold))
-                Text(model.complete ? "In your call app, choose OBS Virtual Camera as the camera."
-                                    : "Use your Android phone's camera as your Mac's webcam.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // "Set up" and "All set" share one spot: the old words leave before the new ones come in.
+                ZStack(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.complete ? "All set" : "Set up \(appName)")
+                            .font(.title2.weight(.semibold))
+                        Text(model.complete ? "In your call app, choose OBS Virtual Camera as the camera."
+                                            : "Use your Android phone's camera as your Mac's webcam.")
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .id(model.complete)
+                    .transition(Motion.swap)
+                }
                 if !model.complete, !model.steps.isEmpty {
                     Text("\(model.doneCount) of \(model.steps.count) steps done")
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                        .transition(Motion.swap)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,19 +271,24 @@ private struct SetupStepCard: View {
         }
     }
 
+    /// The number turning into a check: the old mark leaves before the new one comes in, so they never blend.
     private var badge: some View {
         ZStack {
-            switch mark {
-            case .done:
-                Circle().fill(Color.green)
-                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-            case .next:
-                Circle().fill(Color.accentColor)
-                Text("\(number)").font(.system(size: 12, weight: .bold).monospacedDigit()).foregroundStyle(.white)
-            case .later:
-                Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
-                Text("\(number)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+            ZStack {
+                switch mark {
+                case .done:
+                    Circle().fill(Color.green)
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                case .next:
+                    Circle().fill(Color.accentColor)
+                    Text("\(number)").font(.system(size: 12, weight: .bold).monospacedDigit()).foregroundStyle(.white)
+                case .later:
+                    Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
+                    Text("\(number)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+                }
             }
+            .id(mark)
+            .transition(Motion.swap)
         }
         .frame(width: 24, height: 24)
         .accessibilityHidden(true)
@@ -341,36 +357,51 @@ private struct InstallerControls: View {
     @ObservedObject var installer: Installer
     let actions: [SetupAction]
     let showIdle: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            switch installer.phase {
-            case .idle:
-                if showIdle { SetupButtons(actions: actions) }
-            case let .downloading(received, total):
-                progress(total > 0 ? Double(received) / Double(total) : nil,
-                         total > 0 ? "Downloading, \(Self.size(received)) of \(Self.size(total))" : "Downloading…")
-            case let .installing(text):
-                progress(nil, text)
-            case let .failed(message):
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                    SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
-                }
-            case let .waiting(text):
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(text, systemImage: "hand.point.right.fill")
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                    SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
+        // One spot: buttons, progress or a problem leave before the next look comes in.
+        ZStack(alignment: .topLeading) {
+            Group {
+                switch installer.phase {
+                case .idle:
+                    if showIdle { SetupButtons(actions: actions) }
+                case let .downloading(received, total):
+                    progress(total > 0 ? Double(received) / Double(total) : nil,
+                             total > 0 ? "Downloading, \(Self.size(received)) of \(Self.size(total))" : "Downloading…")
+                case let .installing(text):
+                    progress(nil, text)
+                case let .failed(message):
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
+                    }
+                case let .waiting(text):
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(text, systemImage: "hand.point.right.fill")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SetupButtons(actions: [.install("Try Again", installer)] + actions.dropFirst())
+                    }
                 }
             }
+            .id(look)
+            .transition(Motion.swap)
         }
-        .animation(reduceMotion ? nil : setupSpring, value: installer.phase)
+        // Keyed on the look, not the phase: a download's bytes change many times a second and move in place.
+        .animation(Motion.allowed(Motion.stageChange), value: look)
+    }
+
+    /// Which look the phase shows. Progress within a download or an install keeps the same look.
+    private var look: String {
+        switch installer.phase {
+        case .idle: showIdle ? "idle" : "none"
+        case .downloading, .installing: "progress"
+        case let .failed(message): "failed " + message
+        case let .waiting(text): "waiting " + text
+        }
     }
 
     private func progress(_ fraction: Double?, _ text: String) -> some View {
@@ -385,7 +416,6 @@ private struct InstallerControls: View {
             }
             Text(text).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         }
-        .transition(.opacity)
     }
 
     private static func size(_ bytes: Int64) -> String {
@@ -441,6 +471,7 @@ struct SettingsView: View {
     @StateObject private var loginStatus = StateBox(SMAppService.mainApp.status)
     @StateObject private var loginError = StateBox<String?>(nil)
     @StateObject private var notificationsBlocked = StateBox(false)
+    private var change: Animation? { Motion.allowed(Motion.stageChange) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -466,9 +497,11 @@ struct SettingsView: View {
                 SettingToggle(title: "Notifications", hint: "When the webcam starts, stops on an error, the phone gets hot or the cable comes loose.",
                               isOn: $notifications) {
                     if notifications && notificationsBlocked.value {
-                        Label("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.",
-                              systemImage: "bell.slash")
-                            .foregroundStyle(.orange)
+                        Label {
+                            Text("macOS has notifications turned off for \(appName). Turn them on in System Settings > Notifications.")
+                        } icon: {
+                            Image(systemName: "bell.slash").foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -477,7 +510,7 @@ struct SettingsView: View {
                               hint: "Opens and closes Live Controls from any app, even a call in full screen.",
                               isOn: $shortcut, shownTitle: "Keyboard shortcut", keys: GlobalHotkey.keys) {
                     if shortcut, let problem = model.shortcutProblem {
-                        Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Label { Text(problem) } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                     }
                 }
             }
@@ -486,7 +519,8 @@ struct SettingsView: View {
                               hint: "Copies the app and macOS versions, the phone model, setup and recent errors for a bug report. No serial numbers.") {
                     Button("Copy Diagnostics") { model.copyDiagnostics() }
                         .disabled(model.copy == .gathering)
-                    copyStatus
+                    // Gathering… and Copied share one spot, so Copied doesn't land to the right and then slide back.
+                    ZStack(alignment: .leading) { copyStatus }
                 }
                 GroupDivider()
                 SettingAction(title: "Setup", hint: "Go through the setup steps again, to check them or to set up another phone.") {
@@ -500,8 +534,13 @@ struct SettingsView: View {
         }
         .padding(22)
         .frame(width: 440)
-        .animation(Motion.allowed(Motion.stageChange), value: model.copy)
-        .animation(Motion.allowed(Motion.stageChange), value: model.shortcutProblem)
+        // Notes under a switch come and go on the same spring as Copied.
+        .animation(change, value: model.copy)
+        .animation(change, value: model.shortcutProblem)
+        .animation(change, value: shortcut)
+        .animation(change, value: notifications && notificationsBlocked.value)
+        .animation(change, value: loginStatus.value)
+        .animation(change, value: loginError.value)
         .onChange(of: notifications) { model.notificationsChanged($0); checkNotifications() }
         .onChange(of: shortcut) { model.shortcutChanged($0) }
         .onAppear(perform: checkNotifications)
@@ -694,12 +733,19 @@ struct SyncCheckView: View {
             hero
             stage
             HStack {
-                if let busy = model.busy {
-                    ProgressView().controlSize(.small)
-                    Text(busy).font(.callout).foregroundStyle(.secondary)
-                } else if !model.live {
-                    Text("The webcam isn't live.").font(.callout).foregroundStyle(.secondary)
-                    Button("Start Webcam") { model.startWebcam() }
+                // What the webcam is doing swaps in one spot as it starts, so its words never pile up.
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 8) {
+                        if let busy = model.busy {
+                            ProgressView().controlSize(.small)
+                            Text(busy).font(.callout).foregroundStyle(.secondary)
+                        } else if !model.live {
+                            Text("The webcam isn't live.").font(.callout).foregroundStyle(.secondary)
+                            Button("Start Webcam") { model.startWebcam() }
+                        }
+                    }
+                    .id(webcamState)
+                    .transition(Motion.swap)
                 }
                 Spacer()
                 Button(startTitle) { model.begin() }
@@ -707,10 +753,15 @@ struct SyncCheckView: View {
                     .controlSize(.large)
                     .disabled(!model.live || model.phase == .listening || model.microphone == nil)
             }
+            .animation(change, value: webcamState)
+            .animation(change, value: startTitle)
         }
         .padding(22)
         .frame(width: 440)
     }
+
+    private var change: Animation? { Motion.allowed(Motion.stageChange) }
+    private var webcamState: String { model.busy ?? (model.live ? "live" : "off") }
 
     private var hero: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -746,27 +797,41 @@ struct SyncCheckView: View {
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 176, alignment: .topLeading)
         .background(Card())
-        .animation(Motion.allowed(Motion.stageChange), value: model.phase)
+        .animation(change, value: model.phase)
+        .animation(change, value: meterText)
+    }
+
+    /// The line under the meter: what to do before the test, then what it's hearing.
+    private var meterText: String {
+        switch model.phase {
+        case .listening: model.meter.heard ? "Heard the clap. Matching it to the picture." : "Listening. Clap once."
+        default: model.live ? "Press Start, then clap where the microphone can hear it."
+            : model.busy != nil ? "Press Start once the picture is live, then clap."
+            : "Start the webcam below, then press Start and clap."
+        }
     }
 
     @ViewBuilder private var phaseView: some View {
         switch model.phase {
-        case .idle:
+        case .idle, .listening:
+            // One meter for both, so pressing Start doesn't swap it for a copy of itself.
+            let listening = model.phase == .listening
             VStack(alignment: .leading, spacing: 10) {
-                ClapMeter(level: 0)
-                Text(model.live ? "Press Start, then clap where the microphone can hear it." : "Start the webcam first, then press Start and clap.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                ClapMeter(level: listening ? model.meter.level : 0, heard: listening && model.meter.heard)
+                ZStack(alignment: .topLeading) {
+                    Text(meterText)
+                        .font(listening ? .callout.weight(.medium) : .callout)
+                        .foregroundStyle(listening ? HierarchicalShapeStyle.primary : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(meterText)
+                        .transition(Motion.swap)
+                }
+                if listening {
+                    TimeBar(progress: model.meter.heard ? 1 : model.meter.progress)
+                        .transition(Motion.swap)
+                }
             }
-            .transition(Motion.swap)
-        case .listening:
-            VStack(alignment: .leading, spacing: 10) {
-                ClapMeter(level: model.meter.level, heard: model.meter.heard)
-                Text(model.meter.heard ? "Heard the clap. Matching it to the picture." : "Listening. Clap once.")
-                    .font(.callout.weight(.medium))
-                TimeBar(progress: model.meter.heard ? 1 : model.meter.progress)
-            }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: listening ? .combine : .contain)
             .transition(Motion.swap)
         case let .result(lagMs):
             VStack(alignment: .leading, spacing: 2) {
@@ -844,22 +909,11 @@ private struct ClapMeter: View {
     var heard = false
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.08))
-                Capsule()
-                    .fill(LinearGradient(colors: [Color.green.opacity(0.75), Color.green], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(12, geometry.size.width * fraction))
-                    .opacity(heard || level > 0.01 ? 1 : 0)
-            }
-        }
-        .frame(height: 12)
-        .animation(Motion.allowed(Motion.entrance), value: level)
-        .animation(Motion.allowed(Motion.stageChange), value: heard)
-        .accessibilityHidden(true)
+        LayerBar(fraction: heard ? 1 : CGFloat(min(max(level, 0), 1)), minWidth: 12, visible: heard || level > 0.01,
+                 colors: [NSColor.systemGreen.withAlphaComponent(0.75), .systemGreen], move: .spring)
+            .frame(height: 12)
+            .accessibilityHidden(true)
     }
-
-    private var fraction: CGFloat { heard ? 1 : CGFloat(min(max(level, 0), 1)) }
 }
 
 /// How much of the 8 seconds the test has used.
@@ -867,15 +921,101 @@ private struct TimeBar: View {
     let progress: Double
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.08))
-                Capsule().fill(Color.accentColor.opacity(0.8))
-                    .frame(width: geometry.size.width * CGFloat(min(max(progress, 0), 1)))
-            }
+        LayerBar(fraction: CGFloat(min(max(progress, 0), 1)),
+                 colors: [NSColor.controlAccentColor.withAlphaComponent(0.8)], move: .linear)
+            .frame(height: 4)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A rounded bar whose fill moves in Core Animation, in the render server: the test sends 20 readings a second for 8
+/// seconds, and a SwiftUI spring on each would keep the main thread busy every frame.
+private struct LayerBar: NSViewRepresentable {
+    /// A level springs to each reading (the entrance spring); a clock moves linearly over the 0.05 s between them.
+    enum Move { case spring, linear }
+
+    let fraction: CGFloat
+    var minWidth: CGFloat = 0
+    var visible = true
+    let colors: [NSColor]
+    let move: Move
+
+    func makeNSView(context: Context) -> BarView { BarView(colors: colors) }
+    func updateNSView(_ view: BarView, context: Context) {
+        view.set(fraction: fraction, minWidth: minWidth, visible: visible, move: move)
+    }
+
+    final class BarView: NSView {
+        private let fill = CAGradientLayer()
+        private let colors: [NSColor]
+        private var fraction: CGFloat = 0
+        private var minWidth: CGFloat = 0
+        private var visible = true
+
+        init(colors: [NSColor]) {
+            self.colors = colors.count == 1 ? colors + colors : colors
+            super.init(frame: .zero)
+            wantsLayer = true
+            fill.startPoint = CGPoint(x: 0, y: 0.5)
+            fill.endPoint = CGPoint(x: 1, y: 0.5)
+            fill.anchorPoint = CGPoint(x: 0, y: 0.5)
+            layer?.addSublayer(fill)
         }
-        .frame(height: 4)
-        .animation(Motion.allowed(.linear(duration: 0.05)), value: progress)
-        .accessibilityHidden(true)
+
+        required init?(coder: NSCoder) { fatalError("Use init(colors:).") }
+
+        override var wantsUpdateLayer: Bool { true }
+
+        // Runs with the view's light or dark look current, so the colors follow it.
+        override func updateLayer() {
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            fill.colors = colors.map(\.cgColor)
+            CATransaction.commit()
+        }
+
+        override func layout() {
+            super.layout()
+            place(nil)
+        }
+
+        func set(fraction: CGFloat, minWidth: CGFloat, visible: Bool, move: Move) {
+            guard fraction != self.fraction || minWidth != self.minWidth || visible != self.visible else { return }
+            self.fraction = fraction
+            self.minWidth = minWidth
+            self.visible = visible
+            place(move)
+        }
+
+        private func place(_ move: Move?) {
+            let height = bounds.height
+            layer?.cornerRadius = height / 2
+            let target = CGRect(x: 0, y: 0, width: max(minWidth, bounds.width * fraction), height: height)
+            let opacity: Float = visible ? 1 : 0
+            if let move, window != nil, !Motion.reduced {
+                let from = NSValue(rect: fill.presentation()?.bounds ?? fill.bounds)
+                switch move {
+                case .spring:
+                    fill.add(Motion.spring("bounds", from: from, to: NSValue(rect: target), response: 0.3, damping: 0.86), forKey: "bounds")
+                case .linear:
+                    let step = CABasicAnimation(keyPath: "bounds")
+                    step.fromValue = from
+                    step.toValue = NSValue(rect: target)
+                    step.duration = 0.05
+                    fill.add(step, forKey: "bounds")
+                }
+                if fill.opacity != opacity {
+                    fill.add(Motion.spring("opacity", from: fill.presentation()?.opacity ?? fill.opacity, to: opacity), forKey: "opacity")
+                }
+            }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            fill.bounds = target
+            fill.position = CGPoint(x: 0, y: height / 2)
+            fill.cornerRadius = height / 2
+            fill.opacity = opacity
+            CATransaction.commit()
+        }
     }
 }
