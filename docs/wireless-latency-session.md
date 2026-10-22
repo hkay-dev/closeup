@@ -30,7 +30,7 @@ ANDROID_WEBCAM_WIRELESS=1 'build/Android Webcam.app/Contents/MacOS/AndroidWebcam
 With the switch on:
 
 - Phones on wireless debugging show in the Phone menu. The app follows them through `adb track-devices -l`, so a Wi-Fi drop goes through the same reconnect path as a loose cable.
-- A phone listed over both USB and wireless shows once, as the wireless entry. The app uses that entry's serial for the whole session, so a wireless drop never moves the camera onto the cable; reconnect waits for the wireless serial to come back.
+- A phone listed over both USB and wireless shows once, as the wireless entry while that one is allowed, and as the USB entry while the wireless one is offline. The app uses the serial it started with for the whole session, so a wireless drop never moves the camera onto the cable; reconnect waits for that serial to come back.
 - Capture writes one log line per second (below). With the switch off none of this runs.
 
 `--diagnose` prints `wireless_switch` and `wireless_devices` (every wireless phone adb lists, used or not). A phone on both transports appears only under `wireless_devices` while the switch is on.
