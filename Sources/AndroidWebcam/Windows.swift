@@ -165,7 +165,7 @@ struct SetupView: View {
                 }
             }
             HStack(alignment: .center) {
-                Text(model.complete ? "You can close this window. Setup stays in the menu." : "This list checks itself every few seconds.")
+                Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -211,6 +211,7 @@ struct SetupView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
         }
     }
@@ -246,8 +247,8 @@ private struct SetupStepCard: View {
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
             .strokeBorder(mark == .next ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.06), lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Step \(number), \(step.title)")
-        .accessibilityValue(mark == .done ? "Done" : mark == .next ? "Next" : "Not done")
+        // A group's value isn't read out, so the state goes in its label.
+        .accessibilityLabel("Step \(number), \(step.title), \(mark == .done ? "done" : mark == .next ? "do this next" : "not done yet")")
     }
 
     private var fill: Color {

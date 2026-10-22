@@ -184,7 +184,7 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         defer { try? fileManager.removeItem(at: staging) }
         let unzip = run("/usr/bin/ditto", ["-x", "-k", zip.path, staging.path])
         guard unzip.status == 0 else {
-            throw WebcamError(message: "The platform tools download was damaged. Try again.", detail: "ditto: \(unzip.text)")
+            throw WebcamError(message: "The platform tools couldn't be unpacked on this Mac. Try again.", detail: "ditto: \(unzip.text)")
         }
         let tools = staging.appendingPathComponent("platform-tools", isDirectory: true)
         let adb = tools.appendingPathComponent("adb")

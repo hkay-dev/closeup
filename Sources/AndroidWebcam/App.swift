@@ -569,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let steps = [
             SetupStep(id: "adb", title: "Get Android platform tools", done: adbPath != nil,
                       help: adbPath.map { "Found adb in \((URL(fileURLWithPath: $0).deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)." }
-                        ?? "The app talks to your phone through adb, a small tool from Google.",
+                        ?? "adb, a small tool from Google, talks to your phone.",
                       next: "download Android platform tools in Setup.",
                       actions: [.install("Download Platform Tools", setup.platformTools)],
                       note: "It comes from Google's Android SDK.",
