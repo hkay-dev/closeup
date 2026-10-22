@@ -454,13 +454,21 @@ final class ImageSettingsStore: ObservableObject {
 /// What Settings shows that the app owns, and what its buttons do.
 final class SettingsModel: ObservableObject {
     enum Copy: Equatable { case idle, gathering, copied }
+    enum Update: Equatable { case idle, checking, done(Updates.Result) }
     @Published var copy = Copy.idle
+    @Published var update = Update.idle
     /// Why the Live Controls shortcut isn't working, such as another app holding the same keys.
     @Published var shortcutProblem: String?
     var notificationsChanged: (Bool) -> Void = { _ in }
     var shortcutChanged: (Bool) -> Void = { _ in }
     var copyDiagnostics: () -> Void = {}
     var runSetup: () -> Void = {}
+
+    func checkForUpdates() {
+        guard update != .checking else { return }
+        update = .checking
+        Updates.check(current: appVersion) { [weak self] in self?.update = .done($0) }
+    }
 }
 
 struct SettingsView: View {
@@ -526,6 +534,12 @@ struct SettingsView: View {
                 SettingAction(title: "Setup", hint: "Go through the setup steps again, to check them or to set up another phone.") {
                     Button("Run Setup Again") { model.runSetup() }
                 }
+                GroupDivider()
+                SettingAction(title: "Updates", hint: "Asks GitHub whether there's a newer version. It only checks when you click.") {
+                    Button("Check for Updates") { model.checkForUpdates() }
+                        .disabled(model.update == .checking)
+                    ZStack(alignment: .leading) { updateStatus }
+                }
             }
             Text("Version \(appVersion) · phone server \(ScrcpyServer.version)")
                 .font(.footnote).foregroundStyle(.secondary)
@@ -537,6 +551,7 @@ struct SettingsView: View {
         // Notes under a switch come and go on the same spring as Copied.
         .animation(change, value: model.copy)
         .animation(change, value: model.shortcutProblem)
+        .animation(change, value: model.update)
         .animation(change, value: shortcut)
         .animation(change, value: notifications && notificationsBlocked.value)
         .animation(change, value: loginStatus.value)
@@ -565,6 +580,39 @@ struct SettingsView: View {
         case .copied:
             Label { Text("Copied") } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
                 .font(.callout.weight(.medium))
+                .transition(Motion.swap)
+        }
+    }
+
+    /// What the last update check found, in the spot next to its button.
+    @ViewBuilder private var updateStatus: some View {
+        switch model.update {
+        case .idle:
+            EmptyView()
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking…").foregroundStyle(.secondary)
+            }
+            .font(.callout)
+            .transition(Motion.swap)
+        case .done(.upToDate):
+            Label { Text("You're up to date") } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                .font(.callout.weight(.medium))
+                .transition(Motion.swap)
+        case let .done(.available(version, page)):
+            HStack(spacing: 8) {
+                Label { Text("Version \(version) is out") } icon: { Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor) }
+                    .font(.callout.weight(.medium))
+                Button("Get It") {
+                    if DevMode.isOn { DevMode.record("open-url", page.absoluteString) } else { NSWorkspace.shared.open(page) }
+                }
+                .controlSize(.small)
+            }
+            .transition(Motion.swap)
+        case let .done(.failed(message)):
+            Text(message).font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 .transition(Motion.swap)
         }
     }

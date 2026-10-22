@@ -49,7 +49,7 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 - **Live Controls** (⌃⌥⌘L from any app) opens a small floating panel that stays above your call and never takes its keyboard, so mute and push-to-talk keep working: switch lenses, zoom (hold to keep zooming), turn on the flashlight, and set exposure, white balance, focus and sharpening while you're live. When the webcam is off it has a Start Webcam button. Settings stay for the next call.
 - **Show Preview** opens a picture-only window, separate from what call apps see.
 - **Check Audio Sync** times a clap to measure how far the video lags the sound, so you can set an audio delay in your call or recording app.
-- **Settings** has Launch at login, Start when the phone is plugged in, notifications and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, and **Run Setup Again**.
+- **Settings** has Launch at login, Start when the phone is plugged in, notifications and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, **Run Setup Again**, and **Check for Updates**, which asks GitHub for the newest release and links to it.
 
 <p align="center">
   <img src="docs/assets/settings.png" width="400" alt="Settings: General, Live Controls shortcut and Help with Copy Diagnostics">
@@ -82,7 +82,7 @@ Any phone on Android 12 or later with a back or front camera that Android's Came
 
 ## Report a problem
 
-Open an issue at https://github.com/hkay-dev/android-webcam/issues. In **Settings › Help**, click **Copy Diagnostics** and paste the report into the issue. It has the versions, the phone's model, the setup steps and recent errors, with serial numbers taken out.
+Open an issue at https://github.com/hkay-dev/android-webcam/issues; the bug form asks for the phone and the diagnostics. In **Settings › Help**, click **Copy Diagnostics** and paste the report into the issue. It has the versions, the phone's model, the setup steps and recent errors, with serial numbers taken out.
 
 ## Where files go
 
@@ -108,7 +108,7 @@ Open an issue at https://github.com/hkay-dev/android-webcam/issues. In **Setting
 
 ## Privacy
 
-The app sends video only. It doesn't record, capture your screen or send anything to the Internet; the only downloads are the two setup tools you click. It opens the microphone only while **Check Audio Sync** runs, to time a clap, and keeps nothing. It adds a login item only if you turn on **Launch at login**.
+The app sends video only. It doesn't record, capture your screen or send anything to the Internet. It only goes online for the two setup downloads you click and when you click **Check for Updates**, which asks GitHub for the newest release number. It opens the microphone only while **Check Audio Sync** runs, to time a clap, and keeps nothing. It adds a login item only if you turn on **Launch at login**.
 
 ## Build
 

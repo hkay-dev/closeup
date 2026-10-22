@@ -55,6 +55,8 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     private let store: ImageSettingsStore
     private var panel: NSPanel?
     private var closing = false
+    /// Which fade-out may close the panel: a reopen or a later close makes an earlier one stand down.
+    private var fadeID = 0
     private var loggedPictureError = false
 
     init(store: ImageSettingsStore) {
@@ -63,12 +65,14 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         picture.layer?.cornerRadius = 12
         picture.layer?.masksToBounds = true
         picture.setAccessibilityElement(false)
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersChanged),
+                                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     /// Opens the panel, the first time near the top right of `screen` (the status item's). It never takes the call
     /// app's keyboard: buttons and sliders work without the panel becoming key, so mute and push-to-talk keep working.
     func show(on screen: NSScreen?) {
-        if let panel { closing = false; present(panel); enter(panel); return }
+        if let panel { closing = false; fadeID += 1; present(panel); enter(panel); return }
         let host = NSHostingController(rootView: LiveControlsView(model: model, store: store, picture: picture))
         host.sizingOptions = [.preferredContentSize]
         let panel = HUDPanel(contentRect: NSRect(x: 0, y: 0, width: LiveControlsView.width, height: 600),
@@ -123,7 +127,12 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
     /// One move in: the whole window fades in, close button and shadow with it, while the content grows to full size
     /// on the entrance spring. It starts in the same turn as the press, since the panel is already drawn.
     private func enter(_ panel: NSPanel) {
-        guard !Motion.reduced else { panel.alphaValue = 1; model.appeared = true; return }
+        guard !Motion.reduced else {
+            // Replaces a fade-out still running, which a plain alphaValue set might not stop.
+            NSAnimationContext.runAnimationGroup { $0.duration = 0; panel.animator().alphaValue = 1 }
+            model.appeared = true
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Motion.entranceFade
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -138,14 +147,16 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         guard let panel, !closing else { return }
         guard !Motion.reduced, panel.isVisible else { panel.close(); return }
         closing = true
+        fadeID += 1
+        let id = fadeID
         withAnimation(Motion.exit) { model.appeared = false }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Motion.exitDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         } completionHandler: { [weak self] in
-            // Opened again while it faded: show(on:) turned it back, so it stays.
-            guard let self, self.closing, self.panel === panel else { return }
+            // Opened again while it faded (show(on:) turned it back), or closed again since: only the last fade closes it.
+            guard let self, self.closing, self.fadeID == id, self.panel === panel else { return }
             panel.close()
         }
     }
@@ -180,6 +191,12 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
 
     func windowDidChangeScreen(_ notification: Notification) {
         guard let panel, (notification.object as? NSWindow) === panel else { return }
+        fitScreen(panel.screen)
+    }
+
+    /// A new resolution, scaling or Dock size changes the room on the same screen.
+    @objc private func screenParametersChanged() {
+        guard let panel else { return }
         fitScreen(panel.screen)
     }
 
@@ -270,9 +287,13 @@ struct LiveControlsView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                            .id("footer")
                     }
                     .background(HeightReader(box: controlsHeight))
+                    // Room past the soft edges, so the first card and the footnote can scroll fully clear of them.
+                    // Outside the reader, so the padding never feeds back into whether it scrolls.
+                    .padding(.vertical, scrolls ? 10 : 0)
+                    // The padded whole, so scrolling to its bottom clears the bottom fade too.
+                    .id("footer")
                 }
                 .scrollDisabled(!scrolls)
                 .frame(height: controlsShown)
@@ -286,8 +307,10 @@ struct LiveControlsView: View {
                 }
                 // On a short screen, opening More brings its pickers into view.
                 .onChange(of: more.value) { open in
-                    guard open, scrolls else { return }
+                    guard open else { return }
+                    // Checked once the heights have caught up: opening More may be what makes the controls scroll.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard scrolls else { return }
                         withAnimation(change) { scroller.scrollTo("footer", anchor: .bottom) }
                     }
                 }

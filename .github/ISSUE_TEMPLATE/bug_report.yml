@@ -1,0 +1,32 @@
+name: Something's wrong
+description: The webcam, Setup or a window doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. The exact words the app showed help most.
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone
+      description: Make and model, and Android version.
+      placeholder: Galaxy S25 Ultra, Android 16
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In the app, open Settings, click Copy Diagnostics under Help, and paste it here. It has no serial numbers.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, the call app you used, whether it worked before.
