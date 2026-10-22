@@ -43,6 +43,8 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         case .platformTools:
             download(Self.platformToolsURL, attempt: attempt) { try Self.installPlatformTools(zip: $0); return nil }
         case .obs:
+            // Try Again after a drag that didn't happen: eject the image the last attempt left mounted.
+            if case .waiting = phase { DispatchQueue.global(qos: .utility).async { Self.cleanUp() } }
             phase = .installing("Finding the latest OBS…")
             findOBSDownload(attempt: attempt)
         }
@@ -66,6 +68,8 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static let obsBundleID = "com.obsproject.obs-studio"
     /// The OBS Project's Apple Developer team, as `codesign -dv` reads it on OBS.app.
     static let obsTeamID = "2MMRE5MTB8"
+    /// Google's Apple Developer team, as `codesign -dv` reads it on the SDK's adb.
+    static let googleTeamID = "EQHXZ8M8AV"
 
     /// A dev instance started with ANDROID_WEBCAM_DEV_BARE=1 acts like a Mac with nothing installed: only the adb and
     /// OBS it downloaded into its own directory count, and OBS's camera counts as off.
@@ -85,12 +89,16 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         DevMode.directory?.appendingPathComponent("Applications", isDirectory: true) ?? URL(fileURLWithPath: "/Applications", isDirectory: true)
     }
 
-    /// OBS Studio if it's installed: where Launch Services knows it, or the copy this app put in place.
+    /// OBS Studio if it's installed: where Launch Services knows it, or the copy this app put in place. A copy on a
+    /// mounted disk image (/Volumes) doesn't count, since OBS's camera only turns on from Applications.
     static func installedOBS() -> URL? {
         let copy = applicationsDirectory.appendingPathComponent("OBS.app")
         let ownCopy = FileManager.default.fileExists(atPath: copy.path) ? copy : nil
         if bareMac { return ownCopy }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: obsBundleID) ?? ownCopy
+        let known = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: obsBundleID).first {
+            !$0.path.hasPrefix("/Volumes/") && !$0.lastPathComponent.hasPrefix(".")
+        }
+        return known ?? ownCopy
     }
 
     /// VirtualCamera.extensionState, except that a bare dev Mac has no OBS camera.
@@ -188,7 +196,18 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
         let tools = staging.appendingPathComponent("platform-tools", isDirectory: true)
         let adb = tools.appendingPathComponent("adb")
-        let version = fileManager.isExecutableFile(atPath: adb.path) ? run(adb.path, ["version"]) : (status: -1, text: "no adb in the zip")
+        guard fileManager.isExecutableFile(atPath: adb.path) else {
+            throw WebcamError(message: "The platform tools downloaded, but adb didn't run on this Mac. Try again.",
+                              detail: "No adb in the zip.")
+        }
+        // Signed by Google through Apple, before anything runs it.
+        let requirement = "=anchor apple generic and certificate leaf[subject.OU] = \"\(googleTeamID)\""
+        let signature = run("/usr/bin/codesign", ["--verify", "--strict", "-R", requirement, adb.path])
+        guard signature.status == 0 else {
+            throw WebcamError(message: "The platform tools downloaded, but adb didn't run on this Mac. Try again.",
+                              detail: "adb failed its signature check: \(signature.text)")
+        }
+        let version = run(adb.path, ["version"])
         guard version.status == 0, version.text.contains("Android Debug Bridge") else {
             throw WebcamError(message: "The platform tools downloaded, but adb didn't run on this Mac. Try again.",
                               detail: "adb version: \(version.text)")
@@ -223,9 +242,13 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let result: Result<URL, Error> = Result {
-                guard let data, error == nil, status == 200 else {
+                guard let data, error == nil, status != 0 else {
                     throw WebcamError(message: "Couldn't reach GitHub to find OBS. Check that the Mac is online, then try again.",
-                                      detail: "GitHub releases: HTTP \(status) \(error?.localizedDescription ?? "")")
+                                      detail: "GitHub releases: \(error?.localizedDescription ?? "no answer")")
+                }
+                guard status == 200 else {
+                    throw WebcamError(message: "GitHub didn't answer right now. Try again later, or get OBS from obsproject.com.",
+                                      detail: "GitHub releases: HTTP \(status) \(String(decoding: data.prefix(300), as: UTF8.self))")
                 }
                 let release = try JSONDecoder().decode(Release.self, from: data)
                 let platform = Self.obsAssetPlatform
@@ -257,8 +280,9 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
               let mount = entities.compactMap({ $0["mount-point"] as? String }).first else {
             throw WebcamError(message: "The OBS download didn't open. Try again.", detail: "hdiutil attach: \(attach.text)")
         }
+        track(mount: mount)
         var detach = true
-        defer { if detach { _ = run("/usr/bin/hdiutil", ["detach", mount, "-quiet", "-force"]) } }
+        defer { if detach { Self.detach(mount) } }
         let app = URL(fileURLWithPath: mount).appendingPathComponent("OBS.app")
         guard FileManager.default.fileExists(atPath: app.path) else {
             throw WebcamError(message: "The OBS download has no OBS app in it. Get it from obsproject.com instead.",
@@ -268,20 +292,62 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let applications = applicationsDirectory
         if DevMode.isOn { try FileManager.default.createDirectory(at: applications, withIntermediateDirectories: true) }
         guard FileManager.default.isWritableFile(atPath: applications.path) else {
+            // Stays mounted for the drag; ejected once the step is done, on Try Again, or at quit.
             detach = false
             DispatchQueue.main.async {
                 if DevMode.isOn { DevMode.record("open-url", mount) } else { NSWorkspace.shared.open(URL(fileURLWithPath: mount)) }
             }
             return .waiting("Drag OBS into the Applications folder in the Finder window that opened. This step finishes by itself.")
         }
+        // Copied under a hidden name and renamed, so a half-done copy never counts as installed.
         let destination = applications.appendingPathComponent("OBS.app")
-        let copy = run("/usr/bin/ditto", [app.path, destination.path])
-        guard copy.status == 0 else {
-            try? FileManager.default.removeItem(at: destination)
+        let partial = applications.appendingPathComponent(".OBS-\(UUID().uuidString).app")
+        track(copy: partial)
+        defer { try? FileManager.default.removeItem(at: partial); track(copy: nil) }
+        let copy = run("/usr/bin/ditto", [app.path, partial.path])
+        guard copy.status == 0, (try? FileManager.default.moveItem(at: partial, to: destination)) != nil else {
             throw WebcamError(message: "OBS couldn't be copied into Applications. Try again, or drag it in from obsproject.com's download.",
                               detail: "ditto: \(copy.text)")
         }
         return nil
+    }
+
+    // MARK: Mounted images
+
+    private static let mountLock = NSLock()
+    private static var mounts: Set<String> = []
+    private static var copyInProgress: URL?
+
+    private static func track(mount: String) {
+        mountLock.lock(); mounts.insert(mount); mountLock.unlock()
+    }
+
+    private static func track(copy: URL?) {
+        mountLock.lock(); copyInProgress = copy; mountLock.unlock()
+    }
+
+    private static func detach(_ mount: String) {
+        _ = run("/usr/bin/hdiutil", ["detach", mount, "-quiet", "-force"])
+        mountLock.lock(); mounts.remove(mount); mountLock.unlock()
+    }
+
+    /// Ejects every OBS image this app mounted and removes a copy cut short. Runs at quit, so it waits.
+    static func cleanUp() {
+        mountLock.lock()
+        let open = mounts, partial = copyInProgress
+        mountLock.unlock()
+        for mount in open { detach(mount) }
+        if let partial { try? FileManager.default.removeItem(at: partial) }
+    }
+
+    /// The step is done (OBS reached Applications): eject an image left mounted for the drag.
+    func stepDone() {
+        guard kind == .obs, !busy else { return }
+        if case .waiting = phase { phase = .idle }
+        Self.mountLock.lock()
+        let open = !Self.mounts.isEmpty
+        Self.mountLock.unlock()
+        if open { DispatchQueue.global(qos: .utility).async { Self.cleanUp() } }
     }
 
     /// Passes when the app's signature holds and it's signed by the OBS Project through Apple, not just any certificate
