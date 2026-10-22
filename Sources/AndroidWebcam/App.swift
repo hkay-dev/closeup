@@ -54,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var captureActivity: NSObjectProtocol?
     /// Stream drops before this time come from the Mac sleeping, not the cable.
     private var sleepQuietUntil = Date.distantPast
+    /// When the Mac last went to sleep; a phone gone before then wasn't dropped by the sleep.
+    private var sleptAt = Date.distantPast
     private var lenses: [String: [CameraLens]] = [:]
     /// Phones whose lenses were listed, or are being listed, since they were plugged in.
     private var lensQueries: Set<String> = []
@@ -602,7 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if let blocked = autoStartBlocked {
                 if devices.contains(where: { $0.serial == blocked }) {
                     // Back after an unplug, not after a blink in adb's list (a Mac wake, a USB mode change).
-                    if let since = blockedMissingSince, Date().timeIntervalSince(since) >= 5, Date() >= sleepQuietUntil {
+                    if let since = blockedMissingSince, reallyGone(since) {
                         autoStartBlocked = nil
                     }
                     blockedMissingSince = nil
@@ -610,14 +612,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     blockedMissingSince = Date()
                 }
             }
-            if devices.contains(where: { $0.serial == savedSerial }) {
-                if !savedWasAllowed, devices.contains(where: { $0.serial == savedSerial && $0.authorized }) {
-                    // Just allowed debugging, back after a real unplug, or the first list since launch.
-                    let unplugged = savedMissingSince.map { Date().timeIntervalSince($0) >= 5 && Date() >= sleepQuietUntil } ?? true
-                    if savedWasListed || unplugged { autoStartArmed = true }
+            let savedWasUnauthorized = listedDevices.contains { $0.serial == savedSerial && $0.status == "unauthorized" }
+            if devices.contains(where: { $0.serial == savedSerial && $0.authorized }) {
+                if !savedWasAllowed {
+                    // Just allowed debugging, back after a real unplug, or not seen since launch.
+                    if savedWasUnauthorized || savedMissingSince.map(reallyGone) ?? true { autoStartArmed = true }
                 }
                 savedMissingSince = nil
-            } else if savedMissingSince == nil {
+            } else if !devices.contains(where: { $0.serial == savedSerial }), savedWasListed, savedMissingSince == nil {
+                // Offline or connecting in between doesn't reset this, so a blink through those states stays a blink.
                 savedMissingSince = Date()
             }
         case let .failure(error):
@@ -781,7 +784,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // restarting stays set until the restart's stop completion runs.
         switchingLens = false; stopRequested = false; quietStart = false; cableLoose = false
         autoStartBlocked = device.serial
-        blockedMissingSince = devices.contains { $0.serial == device.serial } ? nil : Date()
+        // adb's last good list, so a Stop during an adb outage doesn't count as an unplug.
+        blockedMissingSince = listedDevices.contains { $0.serial == device.serial } ? nil : Date()
         endSyncTest(reason: "The webcam stopped.")
         header.clearPicture()
         (window?.contentView as? PreviewView)?.clear()
@@ -839,7 +843,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    @objc private func systemWillSleep() { sleepQuietUntil = .distantFuture }
+    @objc private func systemWillSleep() { sleepQuietUntil = .distantFuture; sleptAt = Date() }
+
+    /// Gone long enough to be an unplug: 5 s or more, and either gone before the Mac slept or outside the wake window.
+    private func reallyGone(_ since: Date) -> Bool {
+        Date().timeIntervalSince(since) >= 5 && (since < sleptAt || Date() >= sleepQuietUntil)
+    }
 
     /// The stream reconnects after a wake, so give it time before telling anyone the phone is gone.
     @objc private func systemDidWake() { sleepQuietUntil = Date().addingTimeInterval(20) }
