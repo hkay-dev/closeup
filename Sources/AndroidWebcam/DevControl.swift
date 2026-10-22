@@ -62,7 +62,7 @@ struct DevHooks {
     let refresh: () -> Void
     /// True once the first phone list and the first environment check are in.
     let ready: () -> Bool
-    /// Opens setup, settings, image, sync or preview. False for any other name.
+    /// Opens setup, settings, controls, sync or preview. False for any other name.
     let open: (String) -> Bool
     let close: (String) -> Void
 }
@@ -114,7 +114,7 @@ final class DevControl {
             return succeed(["windows": windows()])
         case "open":
             guard let name = request["window"] as? String, hooks.open(name) else {
-                return fail("open needs window: setup, settings, image, sync or preview.")
+                return fail("open needs window: setup, settings, controls, sync or preview.")
             }
             return succeed(["windows": windows()])
         case "close":

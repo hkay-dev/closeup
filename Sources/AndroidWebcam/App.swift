@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let phoneItem = NSMenuItem(title: "Phone", action: nil, keyEquivalent: "")
     private let modeItem = NSMenuItem(title: "Capture Mode", action: nil, keyEquivalent: "")
     private let cameraItem = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
-    private let imageItem = NSMenuItem(title: "Image Settings…", action: #selector(showImageSettings), keyEquivalent: "")
+    private let controlsItem = NSMenuItem(title: "Live Controls…", action: #selector(showLiveControls), keyEquivalent: "")
     private let syncItem = NSMenuItem(title: "Check Audio Sync…", action: #selector(showSyncCheck), keyEquivalent: "")
     private let preview = NSMenuItem(title: "Show Preview", action: #selector(togglePreview), keyEquivalent: "p")
     private let zoomIn = NSMenuItem(title: "Zoom In", action: #selector(zoomInChosen), keyEquivalent: "+")
@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private let setup = SetupModel()
     private let imageStore = ImageSettingsStore()
+    private lazy var controls = LiveControlsPanel(store: imageStore)
+    /// Ticks the panel's live clock while it's open, as the menu's clock does while the menu is.
+    private var controlsClock: Timer?
     private let syncModel = SyncCheckModel()
     private let shelf = WindowShelf()
 
@@ -98,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var pendingFrame: CVPixelBuffer?
     private var headerOpen = false
     private var headerFrame: CVPixelBuffer?
+    private var controlsOpen = false
+    private var controlsFrame: CVPixelBuffer?
     private var headerShownAt: UInt64 = 0
     private var previewFailed = false
     private static let previewFailedNote = "The preview couldn't show the picture. Close it and open it again."
@@ -127,13 +132,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         phoneItem.submenu = phoneMenu; menu.addItem(phoneItem)
         modeItem.submenu = modeMenu; menu.addItem(modeItem)
         cameraItem.submenu = cameraMenu; menu.addItem(cameraItem)
-        menu.addItem(imageItem)
+        menu.addItem(controlsItem)
         menu.addItem(syncItem)
         menu.addItem(.separator())
         menu.addItem(preview)
-        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ","))
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp), keyEquivalent: "q")
+        menu.addItem(quitItem)
+        let symbols: [(NSMenuItem, [String])] = [
+            (coolDown, ["thermometer.snowflake", "snowflake"]), (phoneItem, ["smartphone", "iphone"]),
+            (modeItem, ["film"]), (cameraItem, ["camera.aperture", "camera"]), (controlsItem, ["slider.horizontal.3"]),
+            (syncItem, ["waveform"]), (preview, ["macwindow"]), (settingsItem, ["gearshape"]), (quitItem, ["power"]),
+            (zoomIn, ["plus.magnifyingglass"]), (zoomOut, ["minus.magnifyingglass"]), (flashlight, ["flashlight.on.fill"]),
+        ]
+        for (item, names) in symbols { item.image = Self.symbol(names) }
         for (index, mode) in CaptureMode.all.enumerated() {
             let item = NSMenuItem(title: mode.title, action: #selector(selectMode(_:)), keyEquivalent: "")
             item.tag = index
@@ -227,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 switch name {
                 case "setup": self.showSetup()
                 case "settings": self.showSettings()
-                case "image": self.showImageSettings()
+                case LiveControlsPanel.id: self.showLiveControls()
                 case "sync": self.showSyncCheck()
                 case "preview": if self.window == nil { self.togglePreview() }
                 default: return false
@@ -235,7 +249,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 return true
             },
             close: { [weak self] name in
-                if name == "preview" { self?.window?.close() } else { self?.shelf.close(name) }
+                switch name {
+                case "preview": self?.window?.close()
+                case LiveControlsPanel.id: self?.controls.close()
+                default: self?.shelf.close(name)
+                }
             }))
         control.start()
         devControl = control
@@ -320,21 +338,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         statusItem?.button?.toolTip = "\(appName): \(content.status)"
         statusItem?.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
-        if let view = window?.contentView as? PreviewView {
-            view.setVeil(content.picture == nil
-                ? .init(title: "No picture yet", text: "Finish setup from the menu bar, then start the webcam.")
-                : content.picture?.veil)
-        }
+        let veil: PreviewView.Veil? = content.picture == nil
+            ? .init(title: "No picture yet", text: "Finish setup from the menu bar, then start the webcam.")
+            : content.picture?.veil
+        (window?.contentView as? PreviewView)?.setVeil(veil)
 
+        let main: (title: String, symbol: String)
         if running {
-            mainAction.title = "Stop Webcam"
+            main = ("Stop Webcam", "stop.fill")
             mainAction.isEnabled = !stopRequested
         } else if !setup.complete {
-            mainAction.title = "Finish Setup…"
+            main = ("Finish Setup…", "checklist")
             mainAction.isEnabled = true
         } else {
-            mainAction.title = "Start Webcam"
+            main = ("Start Webcam", "play.fill")
             mainAction.isEnabled = devices.contains { $0.serial == selectedSerial && $0.authorized }
+        }
+        if mainAction.title != main.title || mainAction.image == nil {
+            mainAction.title = main.title
+            mainAction.image = Self.symbol([main.symbol])
         }
         coolDown.isHidden = !(running && live && !stopRequested && !restarting && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
 
@@ -354,6 +376,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             : liveSince != nil ? "Reconnecting to the phone" : "Starting the webcam"
         if syncModel.busy != busy { syncModel.busy = busy }
         preview.state = window != nil ? .on : .off
+        // Kept current while closed too, so the panel opens on the right state instead of animating into it.
+        updateControls(content, veil: veil)
+    }
+
+    /// The first of these SF Symbols this macOS has, for a menu item.
+    private static func symbol(_ names: [String]) -> NSImage? {
+        for name in names {
+            if let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) { return image }
+        }
+        return nil
+    }
+
+    /// The Live Controls panel shows what the header does, plus the lens list and the flashlight.
+    private func updateControls(_ content: MenuHeaderView.Content, veil: PreviewView.Veil?) {
+        let running = capture.running
+        let shownLensNote = note != nil && note == lensNote ? note : nil
+        let serial = runDevice?.serial ?? selectedSerial
+        let lenses = serial.map(lensList) ?? []
+        let saved = Prefs.defaults.string(forKey: Prefs.lensID)
+        var state = LiveControlsState()
+        state.dot = content.dot
+        state.status = content.status
+        state.model = content.model
+        state.stats = content.stats
+        state.badge = content.picture?.badge
+        state.note = shownLensNote != nil && content.note == shownLensNote ? nil : content.note
+        state.lenses = lenses
+        // Capture uses camera_id 0 when no lens is given, and the next start uses the saved lens if it's listed.
+        state.lensID = running ? runLensID ?? "0" : lenses.contains { $0.id == saved } ? saved : "0"
+        state.lensNote = shownLensNote
+        state.running = running
+        state.canControl = live && !switchingLens && !stopRequested
+        state.switching = switchingLens
+        state.torchOn = torchOn
+        if controls.model.state != state { controls.model.state = state }
+        controls.picture.setVeil(veil)
     }
 
     private func headerContent() -> MenuHeaderView.Content {
@@ -718,6 +776,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         endSyncTest(reason: "The webcam stopped.")
         header.clearPicture()
         (window?.contentView as? PreviewView)?.clear()
+        controls.picture.clear()
         if userStopped || quiet {
             // Whoever stopped it knows; what's left in Notification Center is out of date. A restart keeps the cable
             // notice: the phone may be gone, and the restarted run waits for it.
@@ -835,14 +894,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func selectLens(_ sender: NSMenuItem) {
         guard let device = runDevice else { return }
-        let list = lensList(device.serial)
-        let lens = list[sender.tag]
+        selectLens(id: lensList(device.serial)[sender.tag].id)
+    }
+
+    /// The Camera menu and the Live Controls panel's lens chips both switch lenses here.
+    private func selectLens(id: String) {
+        guard runDevice != nil, live, !switchingLens, !stopRequested else { return }
         // Saved once the new lens is live, so a lens that can't run this mode isn't remembered.
-        guard lens.id != (runLensID ?? "0") else { return }
-        runLensID = lens.id
+        guard id != (runLensID ?? "0") else { return }
+        runLensID = id
         if note != nil, note == lensNote { note = nil }
         switchingLens = true
-        capture.switchLens(lens.id)
+        capture.switchLens(id)
         refreshUI()
     }
 
@@ -896,8 +959,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         shelf.show("setup", title: "Set Up \(appName)") { SetupView(model: setup) }
     }
 
-    @objc private func showImageSettings() {
-        shelf.show("image", title: "Image Settings") { ImageSettingsView(store: imageStore) }
+    @objc private func showLiveControls() {
+        let model = controls.model
+        model.selectLens = { [weak self] id in self?.selectLens(id: id) }
+        model.zoomIn = { [weak self] in self?.zoomInChosen() }
+        model.zoomOut = { [weak self] in self?.zoomOutChosen() }
+        model.toggleTorch = { [weak self] in self?.toggleFlashlight() }
+        controls.onOpenChange = { [weak self] open in self?.controlsOpenChanged(open) }
+        controls.show()
+    }
+
+    /// The panel gets frames and a ticking clock only while it's open.
+    private func controlsOpenChanged(_ open: Bool) {
+        frameLock.lock()
+        controlsOpen = open
+        controlsFrame = nil
+        frameLock.unlock()
+        controlsClock?.invalidate()
+        controlsClock = nil
+        guard open else { return }
+        refreshUI()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refreshUI() }
+        RunLoop.main.add(timer, forMode: .common)
+        controlsClock = timer
     }
 
     @objc private func showSettings() {
@@ -1003,13 +1087,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     // MARK: Frames
 
-    /// Called on the capture thread. Keeps only the newest frame for the preview and, at about 10 fps while
-    /// the menu is open, for the header; frames that arrive before main runs replace it instead of queueing more work.
+    /// Called on the capture thread. Keeps only the newest frame for the preview, the Live Controls panel and, at about
+    /// 10 fps while the menu is open, the header; frames that arrive before main runs replace it instead of queueing more work.
     private func tap(_ frame: CVPixelBuffer) {
         let now = mach_absolute_time()
         frameLock.lock()
         let test = syncTest
-        var previewHop = false, headerHop = false
+        var previewHop = false, headerHop = false, controlsHop = false
         if previewOpen {
             previewHop = pendingFrame == nil
             pendingFrame = frame
@@ -1019,10 +1103,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             headerHop = headerFrame == nil
             headerFrame = frame
         }
+        if controlsOpen {
+            controlsHop = controlsFrame == nil
+            controlsFrame = frame
+        }
         frameLock.unlock()
         test?.addFrame(frame, hostTime: now)
         if previewHop { DispatchQueue.main.async { [weak self] in self?.showPendingFrame() } }
         if headerHop { DispatchQueue.main.async { [weak self] in self?.showHeaderFrame() } }
+        if controlsHop { DispatchQueue.main.async { [weak self] in self?.showControlsFrame() } }
     }
 
     private func showPendingFrame() {
@@ -1048,6 +1137,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         frameLock.unlock()
         guard let frame, live else { return }
         header.show(frame)
+    }
+
+    private func showControlsFrame() {
+        frameLock.lock()
+        let frame = controlsFrame
+        controlsFrame = nil
+        frameLock.unlock()
+        guard let frame, live, controls.isOpen else { return }
+        controls.show(frame)
     }
 
     // MARK: Notifications

@@ -1,8 +1,19 @@
 import AppKit
 
-/// The menu's top item: a 16:9 thumbnail, a status line with a colored dot, the phone's readings and one wrapped note.
+/// The menu's top item: a 16:9 thumbnail, a status pill with a colored dot, the phone's readings and one wrapped note.
 final class MenuHeaderView: NSView {
-    enum Dot: Equatable { case off, ready, live, wait }
+    enum Dot: Equatable {
+        case off, ready, live, wait
+
+        var color: NSColor {
+            switch self {
+            case .off: .systemGray
+            case .ready: .systemGreen
+            case .live: .systemRed
+            case .wait: .systemOrange
+            }
+        }
+    }
     struct Picture: Equatable {
         var badge: String?
         var veil: PreviewView.Veil?
@@ -24,7 +35,7 @@ final class MenuHeaderView: NSView {
         formatter.numberFormatter.maximumFractionDigits = 0
         return formatter
     }()
-    private static let spokenTemperature: MeasurementFormatter = {
+    static let spokenTemperature: MeasurementFormatter = {
         let formatter = MeasurementFormatter()
         formatter.numberFormatter.maximumFractionDigits = 0
         formatter.unitStyle = .long
@@ -34,6 +45,7 @@ final class MenuHeaderView: NSView {
     private let picture = PreviewView(frame: NSRect(origin: .zero, size: MenuHeaderView.pictureSize), titleSize: 13, textSize: 12)
     private let badge = LiveBadge()
     private let dot = NSView()
+    private let statusRow = NSStackView()
     private let statusLabel = NSTextField(labelWithString: "")
     private let modelLabel = NSTextField(labelWithString: "")
     private let tempIcon = NSImageView()
@@ -50,8 +62,10 @@ final class MenuHeaderView: NSView {
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 60))
         picture.wantsLayer = true
-        picture.layer?.cornerRadius = 8
+        picture.layer?.cornerRadius = 10
+        picture.layer?.cornerCurve = .continuous
         picture.layer?.masksToBounds = true
+        picture.layer?.borderWidth = 1
         picture.translatesAutoresizingMaskIntoConstraints = false
         badge.alphaValue = 0
         badge.isHidden = true
@@ -63,10 +77,15 @@ final class MenuHeaderView: NSView {
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.setAccessibilityElement(false)
         // Fixed-width digits keep the live clock from shifting the line every second.
-        statusLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .bold)
+        statusLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         statusLabel.lineBreakMode = .byTruncatingTail
-        let statusRow = NSStackView(views: [dot, statusLabel])
-        statusRow.spacing = 7
+        // A tinted pill around the dot and the words, so the state reads from the words and not the color alone.
+        statusRow.setViews([dot, statusLabel], in: .leading)
+        statusRow.spacing = 6
+        statusRow.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 10)
+        statusRow.wantsLayer = true
+        statusRow.layer?.cornerRadius = 11
+        statusRow.layer?.cornerCurve = .continuous
 
         for label in [modelLabel, tempLabel, batteryLabel] {
             label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -109,7 +128,8 @@ final class MenuHeaderView: NSView {
             badge.topAnchor.constraint(equalTo: picture.topAnchor, constant: 8),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
-            statusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: Self.pictureSize.width - 31),
+            statusRow.heightAnchor.constraint(equalToConstant: 22),
+            statusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: Self.pictureSize.width - 40),
         ])
     }
 
@@ -121,17 +141,26 @@ final class MenuHeaderView: NSView {
         if window != nil { pulse() }
     }
 
+    // Layer colors don't follow the menu's light or dark look by themselves.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
+    }
+
+    private func applyColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color = (content?.dot ?? .off).color
+            dot.layer?.backgroundColor = color.cgColor
+            statusRow.layer?.backgroundColor = color.withAlphaComponent(0.16).cgColor
+            picture.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+
     func update(_ content: Content) {
         guard content != self.content else { return }
         self.content = content
 
-        let color: NSColor = switch content.dot {
-        case .off: .systemGray
-        case .ready: .systemGreen
-        case .live: .systemRed
-        case .wait: .systemOrange
-        }
-        dot.layer?.backgroundColor = color.cgColor
+        applyColors()
         statusLabel.stringValue = content.status
 
         picture.isHidden = content.picture == nil

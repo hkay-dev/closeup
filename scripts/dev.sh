@@ -8,8 +8,8 @@
 #   scripts/dev.sh stop                  choose Quit, wait for the process, remove the directory
 #   scripts/dev.sh state                 header text, menu items, open windows
 #   scripts/dev.sh menu                  header text and menu items only
-#   scripts/dev.sh choose TITLE          choose a menu item: "Settings", "Start Webcam", "Image Settings", ...
-#   scripts/dev.sh open WINDOW           setup, settings, image, sync or preview
+#   scripts/dev.sh choose TITLE          choose a menu item: "Settings", "Start Webcam", "Live Controls", ...
+#   scripts/dev.sh open WINDOW           setup, settings, controls, sync or preview
 #   scripts/dev.sh close WINDOW
 #   scripts/dev.sh windows               open windows with ids, levels and frames
 #   scripts/dev.sh text WINDOW           what a window shows, one line each, controls marked

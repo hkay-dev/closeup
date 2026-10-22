@@ -61,13 +61,14 @@ Steps:
 4. Stop the webcam or lose the phone mid-test: the window says the webcam stopped.
 Touches: microphone permission, frame tap, the live state, window shelf.
 
-## Image Settings (regular)
-Who and where: Harsha on the Mac, tuning the picture mid-call.
+## Live Controls (regular)
+Who and where: Harsha on the Mac, tuning the picture mid-call, often with the call app full screen.
 Steps:
-1. Choose Image Settings. A window shows exposure, white balance, focus, noise reduction, sharpness (phone) and Mac sharpening.
-2. Change values while live; the picture changes. Reset to Automatic returns everything.
-3. Settings stick across a lens switch, a mode switch, a reconnect and a restart.
-Touches: ImageStore, control messages to the phone, the Mac Core Image sharpening step, saved image state.
+1. Choose Live Controls…; a floating panel opens near the top right and stays above full-screen apps. It shows the live picture, the status in words, lens chips, zoom (hold to repeat), flashlight, exposure, white balance, focus, Mac sharpening, and under More noise reduction and phone sharpness. Esc closes it.
+2. Lens, zoom and flashlight work while live; a hint line says why they're off otherwise. A lens that can't run the mode shows the fallback note in orange.
+3. Change picture values while live; the picture changes. Reset to Automatic returns everything.
+4. Settings stick across a lens switch, a mode switch, a reconnect and a restart.
+Touches: ControlsPanel, selectLens (shared with the Camera menu), the frame tap, ImageSettingsStore, control messages to the phone, the Mac Core Image sharpening step.
 
 ## Phone cable comes loose mid-call (regular)
 Who and where: Harsha on the Mac in a call, the cable on a mount gets bumped.

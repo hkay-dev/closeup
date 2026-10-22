@@ -1,12 +1,13 @@
 ---
 type: feature
-summary: An off-screen dev instance of Android Webcam that an agent drives from a terminal - read the menu header and items, choose items, read and press controls in Setup, Settings, Image Settings and Check Audio Sync, save window PNGs - with isolated defaults and nothing on Harsha's screen.
+summary: An off-screen dev instance of Android Webcam that an agent drives from a terminal - read the menu header and items, choose items, read and press controls in Setup, Settings, Live Controls and Check Audio Sync, save window PNGs - with isolated defaults and nothing on Harsha's screen.
 covers:
   - Sources/AndroidWebcam/DevControl.swift
   - Sources/AndroidWebcam/DevAccessibility.swift
   - Sources/AndroidWebcam/App.swift
   - Sources/AndroidWebcam/Windows.swift
   - Sources/AndroidWebcam/Installer.swift
+  - Sources/AndroidWebcam/ControlsPanel.swift
   - scripts/dev.sh
   - scripts/dev-ctl.py
   - scripts/dev-smoke.sh
@@ -16,7 +17,7 @@ covers:
 
 # Dev automation (off screen)
 
-Built for kata:android-webcam#2a6e. Before it, every GUI journey needed one of the Mac's two macOS VM places. Now an agent on this Mac can walk the menu, Setup, Settings, Image Settings and Check Audio Sync from a terminal while nothing shows on Harsha's screen. The pattern is the one Ramble and Vesper use: a dev instance with its own settings and a control socket, windows parked below the desktop, and `screencapture -l` for pictures.
+Built for kata:android-webcam#2a6e. Before it, every GUI journey needed one of the Mac's two macOS VM places. Now an agent on this Mac can walk the menu, Setup, Settings, Live Controls and Check Audio Sync from a terminal while nothing shows on Harsha's screen. The pattern is the one Ramble and Vesper use: a dev instance with its own settings and a control socket, windows parked below the desktop, and `screencapture -l` for pictures.
 
 ## The switch
 
@@ -28,7 +29,7 @@ The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute dir
 | --- | --- | --- |
 | Settings | `UserDefaults.standard` (`com.harsha.android-webcam`) | Its own suite, `com.harsha.android-webcam.dev.<dir name>`, emptied at launch and deleted at quit. Every read and write goes through `Prefs.defaults`, including the SwiftUI toggles and the hidden wireless switch (the `ANDROID_WEBCAM_WIRELESS` variable still wins). |
 | Menu bar | A status item | None at all. A hidden status item would still be saved in the real app's defaults, so none is created. The menu is the same `NSMenu`, read and chosen through the socket. |
-| Windows | Brought forward and activated | Parked one level below the desktop (`CGWindowLevelForKey(.desktopWindow) - 1`) with `orderFrontRegardless`. The wallpaper covers them, the app never activates, nothing takes focus. The Preview window skips its saved frame, so no `NSWindow Frame Preview` lands in the real defaults. |
+| Windows | Brought forward and activated | Parked one level below the desktop (`CGWindowLevelForKey(.desktopWindow) - 1`) with `orderFrontRegardless`. The wallpaper covers them, the app never activates, nothing takes focus. The Live Controls panel loses its floating level the same way. The Preview window and the Live Controls panel skip their saved frames, so no `NSWindow Frame Preview` or `NSWindow Frame LiveControls` lands in the real defaults. |
 | Notifications | macOS banners | Recorded, not posted (`effects`). |
 | Buttons that act outside the app | Open OBS, About platform tools, Get OBS from obsproject.com, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch | Recorded, not done: no URL opened, no login item registered, no app quit. |
 | Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
@@ -47,7 +48,7 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 | `state` | `header` (the lines the menu header shows, such as `3 of 6 setup steps done` and `Next: plug in your phone with a USB cable.`), `menu`, `windows`, `ready`. |
 | `menu` | Header and menu items: title, enabled, hidden, check state, key, submenus. |
 | `choose TITLE` | Chooses an item as a click would. Matches the full title, the title without its ellipsis (`Settings`), a unique prefix (`Quit`), or a submenu path (`Capture Mode/1080p / 60 fps`). `Setup` matches Finish Setup…. Refuses an item that is missing, hidden or disabled and says why, with the header. Reply: the item, the header after, open windows, effects. |
-| `open WINDOW` / `close WINDOW` | `setup`, `settings`, `image`, `sync` or `preview`. Setup is only in the menu as Finish Setup… while a step is open, so `open setup` is the way in once everything is done. |
+| `open WINDOW` / `close WINDOW` | `setup`, `settings`, `controls` (Live Controls), `sync` or `preview`. Setup is only in the menu as Finish Setup… while a step is open, so `open setup` is the way in once everything is done. |
 | `windows` | Open windows: `id`, title, `windowNumber`, `level`, `parked`, frame. |
 | `text WINDOW` | What the window shows, one line per element. Controls read `[CheckBox] Notifications = 1` (1 is on), `[Button] Reset to Automatic`, `[DisclosureTriangle] Show me how = 0`. Each Setup step starts with its group's label, such as `Step 1, Get Android platform tools, done` (or `do this next`, `not done yet`). |
 | `tree WINDOW` | The accessibility tree as JSON (role, label, value, help, enabled). |
@@ -58,11 +59,11 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 | `ctl OP key=value key:=json` | Any operation. |
 | `smoke [DIR]` | The whole journey below, with checks. |
 
-`WINDOW` is the id from `windows`. Sliders and pop-up menus in Image Settings can be read with `text` and `tree`; `press` covers buttons, check boxes, radio buttons and disclosure triangles.
+`WINDOW` is the id from `windows`. Sliders and segmented pickers in Live Controls can be read with `text` and `tree`; `press` covers buttons, check boxes, radio buttons and disclosure triangles. In Live Controls that's the lens chips (by lens name, such as `Front`), `Zoom in`, `Zoom out`, `Flashlight`, the white balance chips (`Auto white balance`, `Daylight`, `Cloudy`, `Incandescent`, `Fluorescent`), `Continuous focus`, `Locked focus`, `More` and `Reset to Automatic`. A press is one click, so it can't show the zoom buttons repeating while held.
 
 ## Smoke journey
 
-`qm with desktop NAME -- scripts/dev.sh smoke DIR` starts the instance, reads the header and menu, opens Setup (Finish Setup…) and Settings, reads both, presses "Start when the phone is plugged in", checks it in the dev defaults and that the real `startOnPlugIn` didn't change, saves `setup.png` and `settings.png`, chooses Start Webcam and prints the refusal, checks the windows are parked, takes `screencapture -x` of the main display before and after, and quits. It exits 0 when every check passed.
+`qm with desktop NAME -- scripts/dev.sh smoke DIR` starts the instance, reads the header and menu, opens Setup (Finish Setup…) and Settings, reads both, presses "Start when the phone is plugged in", checks it in the dev defaults and that the real `startOnPlugIn` didn't change, opens Live Controls and Check Audio Sync and reads them, saves `setup.png`, `settings.png`, `controls.png` and `sync.png`, chooses Start Webcam and prints the refusal, checks the windows are parked, takes `screencapture -x` of the main display before and after, and quits. It exits 0 when every check passed.
 
 With no phone the menu's main action is Finish Setup…, so `choose "Start Webcam"` is refused with `No menu item matches "Start Webcam"` and the item list and header. That is what a user sees too: there is nothing to click. The script skips that step when a phone is connected and Start Webcam is enabled, because the instance would then start the real camera.
 
