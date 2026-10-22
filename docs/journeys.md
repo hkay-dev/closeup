@@ -64,7 +64,7 @@ Touches: microphone permission, frame tap, the live state, window shelf.
 ## Live Controls (regular)
 Who and where: Harsha on the Mac, tuning the picture mid-call, often with the call app full screen.
 Steps:
-1. Choose Live Controls…; a floating panel opens near the top right and stays above full-screen apps. It shows the live picture, the status in words, lens chips, zoom (hold to repeat), flashlight, exposure, white balance, focus, Mac sharpening, and under More noise reduction and phone sharpness. Esc closes it.
+1. Choose Live Controls… or press ⌃⌥⌘L from any app; a floating panel opens near the top right of the menu bar's screen and stays above full-screen apps. It shows the live picture, the status in words, lens chips, zoom (hold to repeat), flashlight, exposure, white balance, focus, Mac sharpening, and under More noise reduction and phone sharpness. It never becomes the key window, so the call keeps its shortcuts; the close button or ⌃⌥⌘L closes it.
 2. Lens, zoom and flashlight work while live; a hint line says why they're off otherwise. A lens that can't run the mode shows the fallback note in orange.
 3. Change picture values while live; the picture changes. Reset to Automatic returns everything.
 4. Settings stick across a lens switch, a mode switch, a reconnect and a restart.
@@ -89,7 +89,7 @@ Touches: phone stats polling, heat notification topic, restart path, saved mode.
 ## Notifications and Settings (regular)
 Who and where: Harsha on the Mac.
 Steps:
-1. Settings shows Launch at login, Start when the phone is plugged in, Notifications and the version line.
+1. Settings shows three groups: General (Launch at login, Start when the phone is plugged in, Notifications), Live Controls (the ⌃⌥⌘L shortcut, on by default; says so when another app holds the keys) and Help (Copy Diagnostics, which shows "Copied" and puts a report with no serial numbers on the clipboard; Run Setup Again), then the version line.
 2. First Start with Notifications on asks permission once. A denied permission shows a line in Settings saying how to turn it on.
 3. Click a notification: the menu opens.
 4. Start when plugged in: the webcam starts at launch with the saved phone plugged in, or when the saved phone shows up allowed; never because the menu opened or the switch was turned on. After Stop it waits until the phone has been unplugged for 5 s.

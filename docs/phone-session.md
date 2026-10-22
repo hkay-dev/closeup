@@ -49,7 +49,7 @@ Stop between modes; the mode menu is locked while live.
 | At 4K · 60, pick each lens | A lens that can't do 4K goes back to the last one with the note "X can't run 4K · 60. The webcam went back to Y." and the call keeps its picture | 6xxm, 5xnx |
 | Zoom In, Zoom Out, Flashlight | The picture zooms; the torch lights and gets a tick | pz06 |
 | Live Controls: exposure, white balance, focus, noise reduction, sharpness, one at a time | Each changes the picture. Write down any that do nothing; Samsung's camera may ignore some | wpc4 |
-| Live Controls over a full-screen call: lens chips, hold a zoom button, flashlight, Esc | The panel stays above the call; holding zoom keeps zooming; Esc closes it | 90fc |
+| Live Controls over a full-screen call: ⌃⌥⌘L, lens chips, hold a zoom button, flashlight, then the call's mute shortcut | The panel opens above the call; holding zoom keeps zooming; mute still works with the panel open; ⌃⌥⌘L closes it | 90fc, rj7f |
 | Extra sharpening on the Mac | Edges get crisper | b4y5 |
 | Switch lens, then Stop and Start | The image settings stay | wpc4 |
 | Reset to Automatic | Everything goes back | |

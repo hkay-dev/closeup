@@ -62,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var sleepQuietUntil = Date.distantPast
     /// When the Mac last went to sleep; a phone gone before then wasn't dropped by the sleep.
     private var sleptAt = Date.distantPast
+    /// Every serial adb has listed this run, for taking them out of Copy Diagnostics.
+    private var seenSerials: Set<String> = []
+    /// Which Copy Diagnostics press the "Copied" reset belongs to.
+    private var copyToken = 0
     private var lenses: [String: [CameraLens]] = [:]
     /// Phones whose lenses were listed, or are being listed, since they were plugged in.
     private var lensQueries: Set<String> = []
@@ -613,6 +617,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let savedWasListed = listedDevices.contains { $0.serial == savedSerial }
             self.devices = devices
             listedDevices = devices
+            for device in devices { seenSerials.formUnion([device.serial, device.hardwareSerial].compactMap { $0 }) }
             discoveryError = nil
             // The saved phone wins whenever it is plugged in; otherwise use any authorized one for now.
             if devices.contains(where: { $0.serial == savedSerial }) {
@@ -1059,7 +1064,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func copyDiagnostics() {
         guard settingsModel.copy != .gathering else { return }
         settingsModel.copy = .gathering
-        let known = devices + listedDevices + (runDevice.map { [$0] } ?? [])
+        copyToken += 1
+        let token = copyToken
+        // Includes the saved phone's serial, so one unplugged since doesn't leave its serial in old log lines.
+        let serials = seenSerials.union([Prefs.defaults.string(forKey: Prefs.serial)].compactMap { $0 })
         let input = Diagnostics.Input(
             adbPath: adbPath, obsPath: Installer.installedOBS()?.path,
             obsCamera: extensionActive ? "on" : environmentKnown ? "off" : "not checked yet",
@@ -1067,7 +1075,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             steps: setup.steps.map { ($0.title, $0.done) },
             mode: CaptureMode.all[capture.running ? runModeIndex : modeIndex].title,
             webcam: live ? "live" : capture.running ? "starting or reconnecting" : "off",
-            serials: known.flatMap { [$0.serial, $0.hardwareSerial].compactMap { $0 } })
+            serials: Array(serials))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let report = Diagnostics.report(input)
             DispatchQueue.main.async {
@@ -1080,7 +1088,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 }
                 self.settingsModel.copy = .copied
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                    if self?.settingsModel.copy == .copied { self?.settingsModel.copy = .idle }
+                    guard let self, self.copyToken == token, self.settingsModel.copy == .copied else { return }
+                    self.settingsModel.copy = .idle
                 }
             }
         }
