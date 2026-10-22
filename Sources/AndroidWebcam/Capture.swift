@@ -59,6 +59,14 @@ enum ADB {
     private static let lookupLock = NSLock()
     private static var found: URL?
 
+    /// adb's server looks for wireless phones on the local network (mDNS), and macOS asks the user whether this app may
+    /// "find devices on local networks". USB doesn't need it, so while the wireless switch is off, a server this app
+    /// starts leaves the network alone. Every adb this app runs inherits the variable; a server that's already running
+    /// keeps its own, and an ADB_MDNS the user set wins. Called once in main, before any other thread runs.
+    static func prepareEnvironment() {
+        if !Wireless.enabled { setenv("ADB_MDNS", "0", 0) }
+    }
+
     /// The first executable adb among the usual install locations, cached once found. The copy Setup downloads comes
     /// after the Android SDK and before Homebrew.
     static func executable() throws -> URL {

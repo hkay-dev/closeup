@@ -27,11 +27,17 @@ enum Prefs {
 let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? ProcessInfo.processInfo.processName
 let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development build"
 
+/// Asks macOS to make this app the active one. Since macOS 14 that's a request, which it may turn down while the user
+/// is busy in another app.
+func activateApp() {
+    if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+}
+
 /// Puts a window in front of the app the user is in. Activation alone doesn't bring an accessory app forward.
 /// The dev automation instance parks it below the desktop instead.
 func bringForward(_ window: NSWindow) {
     if DevMode.isOn { DevMode.park(window); return }
-    if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+    activateApp()
     window.makeKeyAndOrderFront(nil)
     window.orderFrontRegardless()
 }
@@ -81,6 +87,17 @@ final class WindowShelf: NSObject, NSWindowDelegate {
 
     func isOpen(_ id: String) -> Bool { windows[id] != nil }
 
+    func window(_ id: String) -> NSWindow? { windows[id] }
+
+    /// A window that grows (Setup opening a step) keeps its top edge, which can run it under the Dock: lift it back up.
+    func windowDidResize(_ notification: Notification) {
+        guard !DevMode.isOn, let window = notification.object as? NSWindow, let visible = window.screen?.visibleFrame,
+              window.frame.minY < visible.minY else { return }
+        let lift = min(visible.minY - window.frame.minY, max(0, visible.maxY - window.frame.maxY))
+        guard lift > 0 else { return }
+        window.setFrameOrigin(NSPoint(x: window.frame.minX, y: window.frame.minY + lift))
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard let id = (notification.object as? NSWindow)?.identifier?.rawValue else { return }
         windows[id] = nil
@@ -127,7 +144,8 @@ struct SetupStep: Identifiable, Equatable {
     let next: String    // the header's "Next:" line while this step is pending
     var actions: [SetupAction] = []     // the first is the step's main button
     var howTo: [String] = []            // numbered steps under the help while pending
-    var howToFolded = false             // behind a "Show me how" disclosure
+    var tip: String? = nil              // a line above "Show me how" while pending
+    var more: [String] = []             // behind a "Show me how" disclosure: numbered, or bullets after a howTo
     var note: String? = nil             // a small line under the buttons
     var link: SetupAction? = nil        // a small link after the note
     var installer: Installer? = nil     // shows its download in place of the buttons while it runs
@@ -141,6 +159,24 @@ final class SetupModel: ObservableObject {
     var nextStep: SetupStep? { steps.first { !$0.done } }
     var complete: Bool { !steps.isEmpty && nextStep == nil }
     var start: () -> Void = {}
+    /// The tallest the window can be on its screen; the steps scroll past it.
+    @Published var maxWindowHeight = CGFloat.infinity
+    /// The screen Setup's window is on.
+    var screen: () -> NSScreen? = { NSScreen.main }
+    private var screenObserver: NSObjectProtocol?
+
+    init() {
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in self?.fit() }
+    }
+
+    /// A short screen (a 1440×900 Mac with the Dock has about 740 pt) can't fit every step open, so they scroll there.
+    func fit() {
+        var height = screen().map { $0.visibleFrame.height - 16 } ?? .infinity
+        // The dev instance can stand in for a short screen, as Live Controls does: dev.sh start devScreenHeight:=740
+        if DevMode.isOn, let fake = Prefs.defaults.object(forKey: "devScreenHeight") as? Double { height = fake }
+        if maxWindowHeight != height { maxWindowHeight = height }
+    }
 }
 
 /// View-local state held in an object, so these views don't need the `@State` macro (the Command Line Tools toolchain has no SwiftUIMacros plugin).
@@ -151,39 +187,85 @@ final class StateBox<Value>: ObservableObject {
 
 struct SetupView: View {
     @ObservedObject var model: SetupModel
+    /// Natural heights of the header, the steps and the footer.
+    @StateObject private var heroHeight = StateBox(CGFloat(0))
+    @StateObject private var stepsHeight = StateBox(CGFloat(0))
+    @StateObject private var footerHeight = StateBox(CGFloat(0))
     private var change: Animation? { Motion.allowed(Motion.stageChange) }
+
+    /// Title bar, paddings and the spacing between the three parts: what the window adds around them.
+    private static let chrome: CGFloat = 28 + 22 * 2 + 18 * 2
+
+    /// The steps' height on screen: all of them, or what fits between the header and the footer on a short screen.
+    private var stepsShown: CGFloat? {
+        guard stepsHeight.value > 0 else { return nil }
+        let room = model.maxWindowHeight - Self.chrome - heroHeight.value - footerHeight.value
+        return max(200, min(stepsHeight.value, room))
+    }
+
+    private var scrolls: Bool { stepsShown.map { $0 < stepsHeight.value - 0.5 } ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            hero
-            VStack(spacing: 8) {
-                ForEach(Array(model.steps.enumerated()), id: \.element.id) { index, step in
-                    SetupStepCard(number: index + 1, step: step,
-                                  mark: step.done ? .done : step.id == model.nextStep?.id ? .next : .later)
+            hero.background(HeightReader(box: heroHeight))
+            ScrollViewReader { scroller in
+                ScrollView(.vertical, showsIndicators: scrolls) {
+                    VStack(spacing: 8) {
+                        ForEach(Array(model.steps.enumerated()), id: \.element.id) { index, step in
+                            SetupStepCard(number: index + 1, step: step,
+                                          mark: step.done ? .done : step.id == model.nextStep?.id ? .next : .later)
+                                .id(step.id)
+                        }
+                    }
+                    .background(HeightReader(box: stepsHeight))
+                    // Room past the soft edges, outside the reader so it never feeds back into whether it scrolls.
+                    .padding(.vertical, scrolls ? 10 : 0)
+                }
+                .scrollDisabled(!scrolls)
+                .frame(height: stepsShown)
+                // Soft edges where the steps scroll under the header and the footer.
+                .mask {
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: scrolls ? 10 : 0)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: scrolls ? 10 : 0)
+                    }
+                }
+                // On a short screen, the step to do next comes into view when the one before it turns done.
+                .onChange(of: model.nextStep?.id) { id in
+                    guard let id else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard scrolls else { return }
+                        withAnimation(change) { scroller.scrollTo(id, anchor: .top) }
+                    }
                 }
             }
-            HStack(alignment: .center) {
-                // The hint and the Start button swap as one when the last step turns done.
-                ZStack(alignment: .leading) {
-                    Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .id(model.complete)
-                        .transition(Motion.swap)
-                }
-                Spacer()
-                if model.complete {
-                    Button("Start Webcam") { model.start() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                        .transition(Motion.swap)
-                }
-            }
+            footer.background(HeightReader(box: footerHeight))
         }
         .padding(22)
         .frame(width: 470)
         .animation(change, value: model.steps)
+    }
+
+    private var footer: some View {
+        HStack(alignment: .center) {
+            // The hint and the Start button swap as one when the last step turns done.
+            ZStack(alignment: .leading) {
+                Text(model.complete ? "You can also start it from the menu bar." : "This list checks itself every few seconds.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .id(model.complete)
+                    .transition(Motion.swap)
+            }
+            Spacer()
+            if model.complete {
+                Button("Start Webcam") { model.start() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    .transition(Motion.swap)
+            }
+        }
     }
 
     private var hero: some View {
@@ -294,21 +376,22 @@ private struct SetupStepCard: View {
         .accessibilityHidden(true)
     }
 
-    /// The how-to, buttons and note of a step that isn't done. A later step keeps only a download that's under way.
+    /// The how-to, buttons, extra help and note of a step that isn't done. A later step keeps only a download that's
+    /// under way.
     @ViewBuilder private var pending: some View {
-        if mark == .next, !step.howTo.isEmpty {
-            if step.howToFolded {
-                DisclosureGroup("Show me how") { howTo.padding(.top, 4) }
-                    .font(.callout)
-            } else {
-                howTo
-            }
-        }
+        if mark == .next, !step.howTo.isEmpty { list(step.howTo, numbered: true) }
         if let installer = step.installer {
             InstallerControls(installer: installer, actions: step.actions, showIdle: mark == .next)
                 .padding(.top, 4)
         } else if mark == .next, !step.actions.isEmpty {
             SetupButtons(actions: step.actions).padding(.top, 4)
+        }
+        if mark == .next, let tip = step.tip {
+            Text(tip).font(.callout).fixedSize(horizontal: false, vertical: true)
+        }
+        if mark == .next, !step.more.isEmpty {
+            DisclosureGroup("Show me how") { list(step.more, numbered: step.howTo.isEmpty).padding(.top, 4) }
+                .font(.callout)
         }
         if mark == .next, step.note != nil || step.link != nil {
             HStack(spacing: 4) {
@@ -322,11 +405,11 @@ private struct SetupStepCard: View {
         }
     }
 
-    private var howTo: some View {
+    private func list(_ lines: [String], numbered: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(step.howTo.enumerated()), id: \.offset) { index, line in
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(index + 1).").monospacedDigit().foregroundStyle(.secondary)
+                    Text(numbered ? "\(index + 1)." : "•").monospacedDigit().foregroundStyle(.secondary)
                     Text(line).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -367,7 +450,8 @@ private struct InstallerControls: View {
                     if showIdle { SetupButtons(actions: actions) }
                 case let .downloading(received, total):
                     progress(total > 0 ? Double(received) / Double(total) : nil,
-                             total > 0 ? "Downloading, \(Self.size(received)) of \(Self.size(total))" : "Downloading…")
+                             total > 0 ? "Downloading, \(Self.megabytes(received)) of \(Self.megabytes(total)) MB"
+                                       : "Downloading, \(Self.megabytes(received)) MB")
                 case let .installing(text):
                     progress(nil, text)
                 case let .failed(message):
@@ -418,8 +502,8 @@ private struct InstallerControls: View {
         }
     }
 
-    private static func size(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    private static func megabytes(_ bytes: Int64) -> Int {
+        Int((Double(bytes) / 1_000_000).rounded())
     }
 }
 

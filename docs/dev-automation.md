@@ -38,7 +38,7 @@ The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute dir
 | Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
 | A Mac with nothing installed | | `ANDROID_WEBCAM_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
 | OBS extension relaunch | `relaunchForExtension` opens a fresh copy and quits | Skipped. |
-| A short screen | Live Controls caps its height to the screen's visible frame and scrolls the controls under Start | `start devScreenHeight:=700` makes the panel act as if the screen had 700 pt of room, to check the scrolling without a small display. |
+| A short screen | Live Controls and Setup cap their height to the screen's visible frame and scroll the controls under Start, or Setup's steps | `start devScreenHeight:=700` makes both act as if the screen had 700 pt of room, to check the scrolling without a small display. |
 | Session record | `~/Library/Application Support/com.harsha.android-webcam/session.json` | `<dir>/session.json`, so the dev instance never cleans up after the real app's phone session. |
 
 ## Commands
@@ -97,9 +97,8 @@ The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated)
 
 ## README screenshots
 
-The PNGs in `docs/assets/` (`setup.png`, `setup-done.png`, `live-controls.png`, `settings.png`, `audio-sync.png`) are `shot`s of the dev instance, retaken on 2026-10-22. Two things keep them free of this Mac's details:
+The PNGs in `docs/assets/` (`setup.png`, `setup-done.png`, `live-controls.png`, `settings.png`, `audio-sync.png`) are `shot`s of the dev instance, retaken on 2026-10-22. One thing keeps them free of this Mac's details:
 
-- adb from a tidy path. Setup's first step prints the folder adb came from, so `ADB=$PWD/scripts/fault-adb` shows the checkout's path. Link `/tmp/awhome/Library/Android/sdk/platform-tools/adb` to `scripts/fault-adb`, point `ADB` at the link and start the instance with `CFFIXED_USER_HOME=/tmp/awhome`: Foundation takes that as the home folder, so the step reads `Found adb in ~/Library/Android/sdk/platform-tools.` `fault-adb` still finds the real adb through `$HOME`.
 - A phone name. The emulator lists as `Android SDK built for arm64`. Leave out its `usb` rule and list it under a made-up name instead: `device 3A281FDJH00XYZ device usb:1-1 product:shiba model:Pixel_8 device:shiba` and `alias 3A281FDJH00XYZ emulator-5920`, with `lenses.3A281FDJH00XYZ` seeded. Hide any other phone adb lists (`hide SERIAL`).
 
 The emulator's camera shows a blocky test picture, so Live Controls is shot in the Ready state. Check Audio Sync is shot while live (no Start Webcam row) after `ctl sync-phase phase=result lagMs:=118`. Setup mid-way is a separate `ANDROID_WEBCAM_DEV_BARE=1` instance.
