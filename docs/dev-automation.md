@@ -38,6 +38,7 @@ The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute dir
 | Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
 | A Mac with nothing installed | | `ANDROID_WEBCAM_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
 | OBS extension relaunch | `relaunchForExtension` opens a fresh copy and quits | Skipped. |
+| A short screen | Live Controls caps its height to the screen's visible frame and scrolls the controls under Start | `start devScreenHeight:=700` makes the panel act as if the screen had 700 pt of room, to check the scrolling without a small display. |
 | Session record | `~/Library/Application Support/com.harsha.android-webcam/session.json` | `<dir>/session.json`, so the dev instance never cleans up after the real app's phone session. |
 
 ## Commands

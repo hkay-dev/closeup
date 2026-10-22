@@ -29,6 +29,8 @@ final class LiveControlsModel: ObservableObject {
     @Published var state = LiveControlsState()
     /// Drives the panel's entrance.
     @Published var appeared = false
+    /// The tallest the window can be on its screen; the controls scroll past it.
+    @Published var maxWindowHeight = CGFloat.infinity
     var selectLens: (String) -> Void = { _ in }
     var zoomIn: () -> Void = {}
     var zoomOut: () -> Void = {}
@@ -91,6 +93,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         panel.delegate = self
         for kind in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] { panel.standardWindowButton(kind)?.isHidden = true }
         // Sized before it's placed, so the saved or top-right spot fits the panel.
+        fitScreen(screen ?? NSScreen.main)
         panel.setContentSize(host.view.fittingSize)
         // The dev instance keeps no frame in the app's real defaults.
         if DevMode.isOn {
@@ -104,6 +107,7 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
             panel.setFrameAutosaveName("LiveControls")
         }
         self.panel = panel
+        fitScreen(panel.screen)
         onOpenChange(true)
         // Clear until its first frame is drawn, at the smaller scale, on this turn's commit; the move starts on the next
         // turn, so the first thing on screen is the whole panel fading in and never an empty window.
@@ -174,6 +178,28 @@ final class LiveControlsPanel: NSObject, NSWindowDelegate {
         } catch {}
     }
 
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard let panel, (notification.object as? NSWindow) === panel else { return }
+        fitScreen(panel.screen)
+    }
+
+    /// A short screen (a 13-inch MacBook with a big Dock) can't fit the whole panel, so its controls scroll there.
+    private func fitScreen(_ screen: NSScreen?) {
+        var height = screen.map { $0.visibleFrame.height - 16 } ?? .infinity
+        // The dev instance can stand in for a short screen: dev.sh start devScreenHeight:=700
+        if DevMode.isOn, let fake = Prefs.defaults.object(forKey: "devScreenHeight") as? Double { height = fake }
+        if model.maxWindowHeight != height { model.maxWindowHeight = height }
+    }
+
+    /// More grows the panel down from its top; on a short screen that runs it under the Dock, so lift it back up.
+    func windowDidResize(_ notification: Notification) {
+        guard let panel, (notification.object as? NSWindow) === panel, !DevMode.isOn,
+              let visible = panel.screen?.visibleFrame, panel.frame.minY < visible.minY else { return }
+        let lift = min(visible.minY - panel.frame.minY, max(0, visible.maxY - panel.frame.maxY))
+        guard lift > 0 else { return }
+        panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: panel.frame.minY + lift))
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === panel else { return }
         panel = nil
@@ -198,6 +224,9 @@ struct LiveControlsView: View {
     @ObservedObject var store: ImageSettingsStore
     let picture: PreviewView
     @StateObject private var more = StateBox(false)
+    /// Natural heights of the fixed top (picture, status, Start) and of the controls under it.
+    @StateObject private var topHeight = StateBox(CGFloat(0))
+    @StateObject private var controlsHeight = StateBox(CGFloat(0))
     @Namespace private var lensSpace
     @Namespace private var balanceSpace
     @Namespace private var focusSpace
@@ -205,24 +234,64 @@ struct LiveControlsView: View {
     private var state: LiveControlsState { model.state }
     private var change: Animation? { Motion.allowed(Motion.stageChange) }
 
+    /// Title bar, paddings and the spacing between the two parts: what the window adds around them.
+    private static let chrome: CGFloat = 28 + 2 + 14 + 12
+
+    /// The controls' height on screen: all of them, or what fits under the top part on a short screen.
+    private var controlsShown: CGFloat? {
+        guard controlsHeight.value > 0 else { return nil }
+        let room = model.maxWindowHeight - Self.chrome - topHeight.value
+        return max(160, min(controlsHeight.value, room))
+    }
+
+    private var scrolls: Bool { controlsShown.map { $0 < controlsHeight.value - 0.5 } ?? false }
+
     var body: some View {
         VStack(spacing: 12) {
-            livePicture
-            statusLines
-            if let start = state.start {
-                // Start Webcam and Finish Setup… share one spot, so one leaves before the other comes in.
-                ZStack {
-                    startButton(start).id(start).transition(Motion.swap)
+            VStack(spacing: 12) {
+                livePicture
+                statusLines
+                if let start = state.start {
+                    // Start Webcam and Finish Setup… share one spot, so one leaves before the other comes in.
+                    ZStack {
+                        startButton(start).id(start).transition(Motion.swap)
+                    }
+                    .transition(Motion.swap)
                 }
-                .transition(Motion.swap)
             }
-            cameraModule
-            pictureModule
-            Text("Call apps list this camera as OBS Virtual Camera.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            .background(HeightReader(box: topHeight))
+            ScrollViewReader { scroller in
+                ScrollView(.vertical, showsIndicators: scrolls) {
+                    VStack(spacing: 12) {
+                        cameraModule
+                        pictureModule
+                        Text("Call apps list this camera as OBS Virtual Camera.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .id("footer")
+                    }
+                    .background(HeightReader(box: controlsHeight))
+                }
+                .scrollDisabled(!scrolls)
+                .frame(height: controlsShown)
+                // Soft edges where the controls scroll under the Start button and the panel's bottom.
+                .mask {
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: scrolls ? 10 : 0)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: scrolls ? 10 : 0)
+                    }
+                }
+                // On a short screen, opening More brings its pickers into view.
+                .onChange(of: more.value) { open in
+                    guard open, scrolls else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        withAnimation(change) { scroller.scrollTo("footer", anchor: .bottom) }
+                    }
+                }
+            }
         }
         .animation(change, value: state.start)
         .padding(.horizontal, 16)
@@ -476,7 +545,11 @@ struct LiveControlsView: View {
                 }
                 .padding(.top, 8)
             } label: {
+                // A DisclosureGroup toggles only from its chevron; the word should open it too.
                 Text("More").font(.system(size: 12, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(change) { more.value.toggle() } }
             }
             .clipped()
 
@@ -799,6 +872,23 @@ private struct LivePill: View {
         .padding(.horizontal, 8)
         .frame(height: 20)
         .background(Capsule().fill(Color.black.opacity(0.55)))
+    }
+}
+
+/// Keeps a view's natural height in a box, for the panel's short-screen scrolling.
+private struct HeightReader: View {
+    let box: StateBox<CGFloat>
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { set(proxy.size.height) }
+                .onChange(of: proxy.size.height) { set($0) }
+        }
+    }
+
+    private func set(_ height: CGFloat) {
+        if abs(box.value - height) > 0.5 { box.value = height }
     }
 }
 
