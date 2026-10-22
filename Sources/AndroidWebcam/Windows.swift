@@ -402,7 +402,8 @@ final class SyncCheckModel: ObservableObject {
     }
     @Published var phase = Phase.idle
     @Published var live = false
-    @Published var starting = false
+    /// What the webcam is doing while it isn't live and can't be started from here, such as "Reconnecting to the phone".
+    @Published var busy: String?
     @Published var meter = SyncTest.Meter()
     @Published var microphone: String?
     var begin: () -> Void = {}
@@ -426,9 +427,9 @@ struct SyncCheckView: View {
                 .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.phase)
             HStack {
-                if model.starting {
+                if let busy = model.busy {
                     ProgressView().controlSize(.small)
-                    Text("Starting the webcam").font(.callout).foregroundStyle(.secondary)
+                    Text(busy).font(.callout).foregroundStyle(.secondary)
                 } else if !model.live {
                     Text("The webcam isn't live.").font(.callout).foregroundStyle(.secondary)
                     Button("Start Webcam") { model.startWebcam() }

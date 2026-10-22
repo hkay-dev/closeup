@@ -51,6 +51,7 @@ final class SyncTest {
     private var engine: AVAudioEngine?
     private var meterTimer: Timer?
     private var completion: ((Result<SyncTestResult, Error>) -> Void)?
+    private var configObserver: NSObjectProtocol?
     private var generation = 0
     // Guarded by lock.
     private var recording = false
@@ -148,6 +149,12 @@ final class SyncTest {
         }
         self.engine = engine
         self.completion = completion
+        // The engine stops by itself when the input device or its format changes, and only says so here.
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            guard let self, let completion = self.completion else { return }
+            self.cancel()
+            completion(.failure(WebcamError(message: "The microphone changed during the test. Test again.")))
+        }
         lock.lock(); recording = true; startTime = mach_absolute_time(); lock.unlock()
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(timer, forMode: .common)
@@ -200,6 +207,7 @@ final class SyncTest {
     }
 
     private func stopEngine() {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver); self.configObserver = nil }
         guard let engine else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()

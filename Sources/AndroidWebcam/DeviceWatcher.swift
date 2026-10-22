@@ -11,6 +11,9 @@ final class DeviceWatcher {
     // Only the follow thread touches these.
     private var delivered = false
     private var versionMismatch = false
+    /// Streams in a row that ended on a version mismatch. One is adb replacing an old server once; two in a row is
+    /// two versions fighting.
+    private var mismatches = 0
 
     /// A plain thread, since it spends its life blocked in poll().
     func start() {
@@ -45,7 +48,8 @@ final class DeviceWatcher {
             let healthy = delivered || Date().timeIntervalSince(began) > 30
             if healthy { delay = 1 }
             // Restarting a client of the wrong version makes adb replace the server the other version started, so retry slowly.
-            let wait = versionMismatch ? 60 : delay
+            mismatches = versionMismatch && !delivered ? mismatches + 1 : 0
+            let wait = mismatches >= 2 ? 60 : delay
             delay = healthy ? 1 : min(delay * 2, 10)
             if !isStopped { Thread.sleep(forTimeInterval: wait) }
         }
@@ -94,6 +98,8 @@ final class DeviceWatcher {
         let detail = String(decoding: errorText, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if detail.lowercased().contains("doesn't match this client") {
             versionMismatch = true
+        }
+        if versionMismatch, mismatches >= 1 {
             throw TransportError(message: "Two different adb versions are installed, and they keep restarting each other's server. "
                                  + "Keep one, or set ADB to the adb your other tools use. This app uses \(process.executableURL?.path ?? "adb").",
                                  detail: "adb track-devices: \(detail)")

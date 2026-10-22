@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var blockedMissingSince: Date?
     /// Start on plug-in fires once per appearance of the saved phone, and once at launch; menus and settings never arm it.
     private var autoStartArmed = true
+    /// How long the saved phone has been gone from adb's list. Like blockedMissingSince, a blink isn't a plug-in.
+    private var savedMissingSince: Date?
     /// adb's last good list. devices empties when the stream fails; this doesn't.
     private var listedDevices: [AndroidDevice] = []
     /// The note a failed lens switch left, cleared by the next lens pick.
@@ -344,8 +346,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         flashlight.state = torchOn ? .on : .off
         // The window can start the webcam itself, so it opens whether or not the webcam is live.
         if syncModel.live != live { syncModel.live = live }
-        let starting = running && !live && !cableLoose && !stopRequested
-        if syncModel.starting != starting { syncModel.starting = starting }
+        let busy: String? = !running || live ? nil
+            : stopRequested ? "Stopping the webcam"
+            : liveSince != nil ? "Reconnecting to the phone" : "Starting the webcam"
+        if syncModel.busy != busy { syncModel.busy = busy }
         preview.state = window != nil ? .on : .off
     }
 
@@ -368,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             } else if liveSince != nil {
                 content.status = "Reconnecting"
                 // The stream can drop with the phone still plugged in, for example when its camera server restarts.
-                content.picture = devices.contains(where: { $0.serial == device.serial && $0.authorized })
+                content.picture = listedDevices.contains(where: { $0.serial == device.serial && $0.authorized })
                     ? .init(veil: .init(title: "Reconnecting to \(device.model)", text: "The camera stays open for your call."))
                     : .init(veil: .init(title: "Plug the phone back in",
                                         text: "The camera stays open for your call and picks up again on its own."))
@@ -516,6 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let savedSerial = Prefs.defaults.string(forKey: Prefs.serial)
             // Compared with adb's last good list, so a failed stream in between doesn't look like a fresh plug-in.
             let savedWasAllowed = listedDevices.contains { $0.serial == savedSerial && $0.authorized }
+            let savedWasListed = listedDevices.contains { $0.serial == savedSerial }
             self.devices = devices
             listedDevices = devices
             discoveryError = nil
@@ -536,7 +541,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                     blockedMissingSince = Date()
                 }
             }
-            if !savedWasAllowed, devices.contains(where: { $0.serial == savedSerial && $0.authorized }) { autoStartArmed = true }
+            if devices.contains(where: { $0.serial == savedSerial }) {
+                if !savedWasAllowed, devices.contains(where: { $0.serial == savedSerial && $0.authorized }) {
+                    // Just allowed debugging, back after a real unplug, or the first list since launch.
+                    let unplugged = savedMissingSince.map { Date().timeIntervalSince($0) >= 5 && Date() >= sleepQuietUntil } ?? true
+                    if savedWasListed || unplugged { autoStartArmed = true }
+                }
+                savedMissingSince = nil
+            } else if savedMissingSince == nil {
+                savedMissingSince = Date()
+            }
         case let .failure(error):
             // A failed stream isn't an unplug, so it leaves autoStartBlocked alone.
             devices = []
@@ -645,7 +659,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         runLensID = lensList(device.serial).contains { $0.id == saved } ? saved : nil
         runDevice = device
         runModeIndex = modeIndex
-        live = false; liveSince = nil; stats = nil; torchOn = false
+        live = false; stats = nil; torchOn = false
+        // The cool-down restart is the same call: keep its clock, and the reconnect veil if the phone drops meanwhile.
+        if !quiet { liveSince = nil }
         switchingLens = false; stopRequested = false; cableLoose = false; hotNotified = false
         quietStart = quiet
         // Asked here rather than at launch, so the prompt comes when there's something to say.
@@ -669,7 +685,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let userStopped = stopRequested, quiet = restarting
         runDevice = nil
         if let activity = captureActivity { ProcessInfo.processInfo.endActivity(activity); captureActivity = nil }
-        live = false; liveSince = nil; stats = nil; torchOn = false
+        live = false; stats = nil; torchOn = false
+        // A cool-down restart keeps the call's clock; startCapture(quiet:) picks it up.
+        if !quiet { liveSince = nil }
+        if note != nil, note == lensNote { note = nil }
+        lensNote = nil
         // restarting stays set until the restart's stop completion runs.
         switchingLens = false; stopRequested = false; quietStart = false; cableLoose = false
         autoStartBlocked = device.serial
@@ -692,7 +712,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func captureLive(_ isLive: Bool) {
         guard capture.running, runDevice != nil else { return }
         if isLive {
-            if cableLoose {
+            if stopRequested {
+                // Stopped just as the first frame came; no notice that Stop would have to chase.
+            } else if cableLoose {
                 notify(.cable, "Phone reconnected", "The webcam is live again.")
             } else if liveSince == nil && !quietStart {
                 notify(.run, "Webcam is live", "Pick OBS Virtual Camera in your call app.")
@@ -719,7 +741,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let quiet = self.sleepQuietUntil.timeIntervalSinceNow
             if quiet > 0 { self.checkLooseCable(after: min(quiet, 20)); return }
             // Still listed means the cable is fine and the stream is coming back on its own; look again later.
-            if let device = self.runDevice, self.devices.contains(where: { $0.serial == device.serial && $0.authorized }) {
+            if let device = self.runDevice, self.listedDevices.contains(where: { $0.serial == device.serial && $0.authorized }) {
                 self.checkLooseCable(after: 2); return
             }
             self.cableLoose = true
@@ -806,13 +828,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// The lens picked mid-call couldn't start in this mode; capture went back to the one that worked.
     private func lensFellBack(to good: String, from failed: String) {
         // A lens picked after the revert wins over this late call.
-        guard let device = runDevice, runLensID == failed else { return }
+        guard let device = runDevice, !stopRequested, runLensID == failed else { return }
         let lenses = lensList(device.serial)
         func name(_ id: String) -> String { lenses.first { $0.id == id }?.label ?? "That camera" }
         runLensID = good
         // The way back can fail too (the cable came out mid-switch), so leave it to the cable check, not "Switching".
         switchingLens = false
-        if devices.contains(where: { $0.serial == device.serial && $0.authorized }) {
+        if listedDevices.contains(where: { $0.serial == device.serial && $0.authorized }) {
             note = "\(name(failed)) can't run \(Self.shortTitle(CaptureMode.all[runModeIndex])). The webcam went back to \(name(good))."
             lensNote = note
         }
@@ -1032,7 +1054,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func notify(_ notice: Notice, _ title: String, _ body: String, category: String? = nil) {
         // The dev instance records the notification and shows nothing.
         if DevMode.isOn, Prefs.defaults.bool(forKey: Prefs.notifications) { DevMode.record("notification", "\(title): \(body)") }
-        guard canNotify, Prefs.defaults.bool(forKey: Prefs.notifications) else { return }
+        guard canNotify else { return }
+        // Turned off mid-call: still take back what's out of date, such as "Phone disconnected" once it's back.
+        guard Prefs.defaults.bool(forKey: Prefs.notifications) else { withdraw([notice]); return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

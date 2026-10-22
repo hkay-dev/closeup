@@ -124,9 +124,9 @@ enum ADB {
     /// Phones from `adb devices -l` or `adb track-devices -l` lines. Emulators are skipped. Wireless entries only
     /// count when the wireless switch is on; then a phone listed over both USB and wireless appears once, as the
     /// wireless entry.
-    static func parseDevices(_ text: String, wireless: Bool = Wireless.enabled) -> [AndroidDevice] {
+    static func parseDevices(_ text: String, wireless: Bool = Wireless.enabled, onePerPhone collapse: Bool = true) -> [AndroidDevice] {
         let devices = text.split(separator: "\n").compactMap { parseLine($0, wireless: wireless) }
-        return wireless ? onePerPhone(devices) : devices
+        return wireless && collapse ? onePerPhone(devices) : devices
     }
 
     private static let mdnsSuffix = "._adb-tls-connect._tcp"
@@ -661,9 +661,10 @@ final class CaptureController {
                 if shouldStop { return false }
                 usleep(100_000)
             }
-            // The adb server may be busy while the phone reattaches, so a failed poll just waits for the next.
-            if let devices = try? ADB.devices(onLaunch: track),
-               devices.contains(where: { $0.serial == serial && $0.authorized }) { return true }
+            // The adb server may be busy while the phone reattaches, so a failed poll just waits for the next. Every
+            // entry counts here: a phone running on USB can also come back online over wireless, which would hide it.
+            if let text = try? ADB.command(["devices", "-l"], timeout: 10, onLaunch: track),
+               ADB.parseDevices(text, onePerPhone: false).contains(where: { $0.serial == serial && $0.authorized }) { return true }
         }
     }
 
@@ -707,11 +708,13 @@ final class CaptureController {
             } else if forwardAttempted {
                 // adb may have made the forward even though its answer never arrived; remove only this session's.
                 do {
-                    let target = "localabstract:scrcpy_\(scid)"
-                    for line in try ADB.command(["-s", device.serial, "forward", "--list"], timeout: 5).split(separator: "\n") {
-                        let fields = line.split(whereSeparator: \.isWhitespace)
-                        guard fields.count == 3, fields[0] == device.serial, fields[1].hasPrefix("tcp:"), fields[2] == target else { continue }
-                        _ = try ADB.command(["-s", device.serial, "forward", "--remove", String(fields[1])], timeout: 5)
+                    // Matched on whole-line ends, since a wireless serial can contain spaces.
+                    let target = " localabstract:scrcpy_\(scid)"
+                    for line in try ADB.command(["-s", device.serial, "forward", "--list"], timeout: 5).split(separator: "\n")
+                    where line.hasPrefix(device.serial + " ") && line.hasSuffix(target) {
+                        let local = line.dropFirst(device.serial.count + 1).dropLast(target.count)
+                        guard local.hasPrefix("tcp:") else { continue }
+                        _ = try ADB.command(["-s", device.serial, "forward", "--remove", String(local)], timeout: 5)
                     }
                 } catch { fputs("Forward cleanup failed. \(error.logText)\n", stderr) }
             }
