@@ -120,11 +120,11 @@ Touches: sleep and wake observers, reconnect loop, the loose cable timer.
 ## First run and setup (rare)
 Who and where: Harsha (or a stranger once it's open source) on a Mac that has never run it.
 Steps:
-1. Open the app. The Setup window opens by itself once, listing five steps: Android platform tools, OBS camera extension, phone connected over USB, Allow USB debugging, OBS Studio closed. Each pending step has its own buttons (Copy Command, Get Platform Tools, Open OBS, Open Login Items, Quit OBS, Show me how).
-2. Do each step; the list checks itself every few seconds and the menu header counts "N of 5 setup steps done" with "Next: ...".
-3. When all are done the window says "All set" and offers Start Webcam.
+1. Open the app. The Setup window opens by itself once: a short intro and six numbered step cards, Get Android platform tools, Install OBS Studio, Turn on OBS's camera, Plug in your phone, Allow USB debugging, Close OBS Studio. The next step is highlighted and has the buttons (Download Platform Tools, Download OBS with "Get OBS from obsproject.com", Open OBS and Open Login Items & Extensions with three short how-to lines, Show me how, Quit OBS).
+2. Downloads show a progress bar with Cancel and Try Again on an error. Platform tools go into the app's Application Support folder; OBS comes from its latest GitHub release, is checked to be signed by the OBS Project's Apple team and is copied into /Applications (or opened in Finder to drag, when Applications isn't writable). The list checks itself every few seconds and the menu header counts "N of 6 setup steps done" with "Next: ...".
+3. When all are done the window says "All set", "In your call app, choose OBS Virtual Camera as the camera." and offers Start Webcam.
 4. Close Setup early: the menu's main item reads "Finish Setup…" and reopens it. It does not open again by itself on the next launch.
-Touches: adb lookup, CoreMediaIO device lookup, NSWorkspace, System Settings deep links, UserDefaults setupShown.
+Touches: adb lookup, Installer downloads, hdiutil and codesign, CoreMediaIO device lookup, NSWorkspace, System Settings deep links, UserDefaults setupShown.
 
 ## Error and recovery without a phone (rare)
 Who and where: Harsha on the Mac with no phone, no adb, a phone that never allowed debugging, or adb hung.
