@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let coolDown = NSMenuItem(title: "Switch to 1080p · 30 to cool down", action: #selector(switchToCoolMode), keyEquivalent: "")
     private let phoneItem = NSMenuItem(title: "Phone", action: nil, keyEquivalent: "")
     private let modeItem = NSMenuItem(title: "Capture Mode", action: nil, keyEquivalent: "")
+    private let orientationItem = NSMenuItem(title: "Orientation", action: nil, keyEquivalent: "")
     private let cameraItem = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
     private let controlsItem = NSMenuItem(title: "Live Controls…", action: #selector(showLiveControls), keyEquivalent: "")
     private let syncItem = NSMenuItem(title: "Check Audio Sync…", action: #selector(showSyncCheck), keyEquivalent: "")
@@ -26,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let flashlight = NSMenuItem(title: "Flashlight", action: #selector(toggleFlashlight), keyEquivalent: "l")
     private let phoneMenu = NSMenu()
     private let modeMenu = NSMenu()
+    private let orientationMenu = NSMenu()
     private let cameraMenu = NSMenu()
     // What each submenu was last built from. Rebuilding a submenu while it's open loses the highlight.
     private var phoneMenuKey: String?
@@ -141,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if let index = CaptureMode.all.firstIndex(where: { $0.title == savedMode }) { modeIndex = index }
         statusItem?.button?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: appName)
         statusItem?.button?.toolTip = appName
-        for item in [menu, phoneMenu, modeMenu, cameraMenu] { item.autoenablesItems = false }
+        for item in [menu, phoneMenu, modeMenu, orientationMenu, cameraMenu] { item.autoenablesItems = false }
         menu.delegate = self
 
         let headerItem = NSMenuItem()
@@ -153,6 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(.separator())
         phoneItem.submenu = phoneMenu; menu.addItem(phoneItem)
         modeItem.submenu = modeMenu; menu.addItem(modeItem)
+        orientationItem.submenu = orientationMenu; menu.addItem(orientationItem)
         cameraItem.submenu = cameraMenu; menu.addItem(cameraItem)
         menu.addItem(controlsItem)
         menu.addItem(syncItem)
@@ -165,7 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(quitItem)
         let symbols: [(NSMenuItem, [String])] = [
             (coolDown, ["thermometer.snowflake", "snowflake"]), (phoneItem, ["smartphone", "iphone"]),
-            (modeItem, ["film"]), (cameraItem, ["camera.aperture", "camera"]), (controlsItem, ["slider.horizontal.3"]),
+            (modeItem, ["film"]), (orientationItem, ["rectangle.portrait.rotate", "rotate.right"]), (cameraItem, ["camera.aperture", "camera"]),
+            (controlsItem, ["slider.horizontal.3"]),
             (syncItem, ["waveform"]), (preview, ["macwindow"]), (settingsItem, ["gearshape"]), (quitItem, ["power"]),
             (zoomIn, ["plus.magnifyingglass"]), (zoomOut, ["minus.magnifyingglass"]), (flashlight, ["flashlight.on.fill"]),
         ]
@@ -175,7 +179,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.tag = index
             modeMenu.addItem(item)
         }
-        for item in menu.items + modeMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
+        for (index, orientation) in PictureOrientation.allCases.enumerated() {
+            let item = NSMenuItem(title: orientation.title, action: #selector(selectOrientation(_:)), keyEquivalent: "")
+            item.tag = index
+            orientationMenu.addItem(item)
+        }
+        for item in menu.items + modeMenu.items + orientationMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
         statusItem?.menu = menu
         NSApp.mainMenu = makeKeyEquivalentMenu()
 
@@ -189,6 +198,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             guard let self else { return }
             self.capture.setImage(self.imageStore.phone)
             self.capture.macSharpness = Float(self.imageStore.macSharpness)
+        }
+        capture.pictureOrientation = imageStore.orientation
+        imageStore.onOrientationChange = { [weak self] in
+            guard let self else { return }
+            self.capture.pictureOrientation = self.imageStore.orientation
+            self.refreshUI()
         }
         syncModel.begin = { [weak self] in self?.beginSyncTest() }
         syncModel.startWebcam = { [weak self] in
@@ -403,6 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         for item in modeMenu.items {
             item.state = item.tag == (running ? runModeIndex : modeIndex) ? .on : .off
             item.isEnabled = !running
+        }
+        for item in orientationMenu.items {
+            item.state = PictureOrientation.allCases[item.tag] == imageStore.orientation ? .on : .off
         }
         cameraItem.isEnabled = live && !switchingLens
         rebuildCameraMenu()
@@ -1005,6 +1023,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         modeIndex = sender.tag
         Prefs.defaults.set(CaptureMode.all[modeIndex].title, forKey: Prefs.mode)
         refreshUI()
+    }
+
+    @objc private func selectOrientation(_ sender: NSMenuItem) {
+        imageStore.orientation = PictureOrientation.allCases[sender.tag]
     }
 
     @objc private func selectLens(_ sender: NSMenuItem) {

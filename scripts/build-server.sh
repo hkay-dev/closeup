@@ -30,7 +30,10 @@ fi
 # A clean copy of the tag, ignoring any local edits in the checkout
 rm -rf "$work"
 mkdir -p "$work/out"
-git -C "$src" archive HEAD | tar -x -C "$work"
+# Through a file: tar stops reading at the end-of-archive marker, so a pipe can kill git archive with SIGPIPE under pipefail.
+git -C "$src" archive --output "$PWD/$work.tar" HEAD
+tar -x -C "$work" -f "$work.tar"
+rm "$work.tar"
 git init --quiet "$work"
 git -C "$work" apply "$PWD/$patch"
 

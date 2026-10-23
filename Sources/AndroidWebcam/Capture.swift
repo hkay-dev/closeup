@@ -50,6 +50,20 @@ enum WhiteBalance: String, CaseIterable, Codable { case auto, daylight, cloudy, 
 enum FocusMode: String, CaseIterable, Codable { case continuous, locked }
 enum ProcessingLevel: String, CaseIterable, Codable { case off, fast, highQuality }
 
+/// Which way the picture stays upright. Landscape and Portrait each follow the phone between their two holds, so the
+/// picture is never upside down; Auto-Rotate follows all four. A tall picture sits between black bars.
+enum PictureOrientation: String, CaseIterable, Codable {
+    case landscape, portrait, auto
+
+    var title: String {
+        switch self {
+        case .landscape: "Landscape"
+        case .portrait: "Portrait"
+        case .auto: "Auto-Rotate"
+        }
+    }
+}
+
 struct PhoneImageSettings: Codable, Equatable {
     var exposureEV: Double = 0                 // -2...2 in 1/3 steps
     var whiteBalance: WhiteBalance = .auto
@@ -315,7 +329,14 @@ final class CaptureController {
     /// Guards the control socket, so a message never goes to a closed or reused descriptor.
     private let controlLock = NSLock()
     private var control: Int32 = -1
-    private let sharpener = FrameSharpener()
+    private let processor = FrameProcessor()
+    /// What the phone server last said about its camera and how the phone is held, in clockwise quarter turns from its
+    /// natural position. Kept across sessions: a lens switch or reconnect doesn't change how the phone is held.
+    private var phoneCamera: (sensor: Int, front: Bool)?
+    private var phoneTurn: Int?
+    /// The last landscape and portrait holds. Before the phone reports one, the landscape hold that most phone cameras send upright.
+    private var landscapeTurn = 3, portraitTurn = 0
+    private var orientation = PictureOrientation.landscape
     private var stopCompletions: [() -> Void] = []
     private(set) var running = false
     var onStatus: (String, Bool) -> Void = { _, _ in }
@@ -327,8 +348,48 @@ final class CaptureController {
     var onLensFallback: ((String, String) -> Void)?
     /// 0 = off ... 1 = strong; applied from the next frame.
     var macSharpness: Float {
-        get { sharpener.amount }
-        set { sharpener.amount = newValue }
+        get { processor.amount }
+        set { processor.amount = newValue }
+    }
+
+    /// Applied from the next frame.
+    var pictureOrientation: PictureOrientation {
+        get { lock.lock(); defer { lock.unlock() }; return orientation }
+        set { lock.lock(); orientation = newValue; lock.unlock(); applyTurns() }
+    }
+
+    /// Clockwise quarter turns that make the picture upright when the phone is turned device quarter turns clockwise
+    /// from its natural position. As Camera2's JPEG orientation, with the turn reversed for a front camera.
+    static func uprightTurns(device: Int, sensor: Int, front: Bool) -> Int {
+        front ? (sensor - device + 4) % 4 : (sensor + device) % 4
+    }
+
+    /// device is nil while the phone lies flat.
+    private func phoneReported(device: Int?, sensor: Int, front: Bool) {
+        lock.lock()
+        phoneCamera = (sensor, front)
+        if let device {
+            phoneTurn = device
+            if device % 2 == 1 { landscapeTurn = device } else { portraitTurn = device }
+        }
+        lock.unlock()
+        fputs("Phone turn \(device.map(String.init) ?? "flat"), camera sensor turn \(sensor)\(front ? ", front" : "")\n", stderr)
+        applyTurns()
+    }
+
+    private func applyTurns() {
+        lock.lock()
+        // Until the phone reports its camera, frames go out as the camera sends them.
+        let turns = phoneCamera.map { camera in
+            let device = switch orientation {
+            case .landscape: landscapeTurn
+            case .portrait: portraitTurn
+            case .auto: phoneTurn ?? landscapeTurn
+            }
+            return Self.uprightTurns(device: device, sensor: camera.sensor, front: camera.front)
+        } ?? 0
+        lock.unlock()
+        processor.turns = turns
     }
 
     init() {
@@ -803,8 +864,11 @@ final class CaptureController {
         if ending(generation) { return }
         controlFD = try connectControl(port: allocated)
         let drainFD = controlFD
-        // Device messages (clipboard and the like) arrive here; read and drop them so the server never blocks.
-        Thread { Self.drainControl(drainFD); controlDrained.signal() }.start()
+        // The server sends how the phone is held here, and must never block on a full socket.
+        Thread { [weak self] in
+            Self.readControl(drainFD) { self?.phoneReported(device: $0, sensor: $1, front: $2) }
+            controlDrained.signal()
+        }.start()
         controlLock.lock(); control = controlFD; controlLock.unlock()
         let codec = try readExactly(4, from: fd)
         guard codec == Data("h265".utf8) else {
@@ -819,7 +883,7 @@ final class CaptureController {
                     throw WebcamError(message: "The phone sent a different picture size than \(mode.title). Pick another capture mode and start again.",
                                       detail: "Decoded \(CVPixelBufferGetWidth(pixel))x\(CVPixelBufferGetHeight(pixel)), expected \(mode.width)x\(mode.height).")
                 }
-                let frame = self.sharpener.process(pixel)
+                let frame = self.processor.process(pixel)
                 try camera.send(frame)
                 self.onFrame?(frame)
                 self.lock.lock()
@@ -869,12 +933,28 @@ final class CaptureController {
                 "webcam_nr=\(level(image.noiseReduction))", "webcam_edge=\(level(image.sharpness))"]
     }
 
-    private static func drainControl(_ fd: Int32) {
+    /// Reads the server's device messages until the socket closes. The only one expected is the webcam's orientation
+    /// message, `[u8 100][u8 phone turn, 255 while flat][u8 sensor turn][u8 front]`; anything else is drained unread.
+    private static func readControl(_ fd: Int32, onOrientation: (Int?, Int, Bool) -> Void) {
         var buffer = [UInt8](repeating: 0, count: 4096)
+        var pending: [UInt8] = []
+        var parsing = true
         while true {
             let count = Darwin.recv(fd, &buffer, buffer.count, 0)
             if count < 0, errno == EINTR { continue }
             if count <= 0 { return }
+            guard parsing else { continue }
+            pending += buffer[0..<count]
+            while let type = pending.first {
+                guard type == 100 else {
+                    fputs("Unexpected device message \(type) from the phone; ignoring the rest.\n", stderr)
+                    parsing = false; pending = []
+                    break
+                }
+                guard pending.count >= 4 else { break }
+                onOrientation(pending[1] < 4 ? Int(pending[1]) : nil, Int(pending[2] % 4), pending[3] == 1)
+                pending.removeFirst(4)
+            }
         }
     }
 

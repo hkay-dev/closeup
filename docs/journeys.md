@@ -42,7 +42,8 @@ Steps:
 2. Capture Mode lists 4K · 60, 1080p · 60, 1080p · 30, 1080p · 120; disabled while running.
 3. While live, Camera lists the lenses; pick one and the header says "Switching camera" while the call keeps the camera. A lens that can't run the mode goes back to the one that worked, and the header says so ("Back · Main can't run 1080p · 30. The webcam went back to Front.").
 4. Zoom In, Zoom Out, Flashlight change the live picture; the flashlight state shows in the menu.
-Touches: saved serial, mode and lens in UserDefaults, the phone's camera list, control socket messages.
+5. Orientation (Landscape, Portrait, Auto-Rotate) works live or stopped and turns the next frame. Landscape and Portrait each follow the phone between their two holds; Auto-Rotate follows all four. Portrait frames are the mode's size, with the tall picture between black bars. While the phone lies flat, the last hold stays.
+Touches: saved serial, mode, lens and orientation in UserDefaults, the phone's camera list, control socket messages both ways (orientation comes from the phone's accelerometer), the Mac Core Image step.
 
 ## Preview window (regular)
 Who and where: Harsha on the Mac, checking framing.
@@ -64,11 +65,11 @@ Touches: microphone permission, frame tap, the live state, window shelf.
 ## Live Controls (regular)
 Who and where: Harsha on the Mac, tuning the picture mid-call, often with the call app full screen.
 Steps:
-1. Choose Live Controls… or press ⌃⌥⌘L from any app; a floating panel opens near the top right of the menu bar's screen and stays above full-screen apps. It shows the live picture, the status in words, lens chips, zoom (hold to repeat), flashlight, exposure, white balance, focus, Mac sharpening, and under More noise reduction and phone sharpness. It never becomes the key window, so the call keeps its shortcuts; the close button or ⌃⌥⌘L closes it.
+1. Choose Live Controls… or press ⌃⌥⌘L from any app; a floating panel opens near the top right of the menu bar's screen and stays above full-screen apps. It shows the live picture, the status in words, lens chips, zoom (hold to repeat), flashlight, orientation, exposure, white balance, focus, Mac sharpening, and under More noise reduction and phone sharpness. It never becomes the key window, so the call keeps its shortcuts; the close button or ⌃⌥⌘L closes it.
 2. Lens, zoom and flashlight work while live; a hint line says why they're off otherwise. A lens that can't run the mode shows the fallback note in orange.
-3. Change picture values while live; the picture changes. Reset to Automatic returns everything.
+3. Change picture values while live; the picture changes. Reset to Automatic returns everything except the orientation, which is about how the phone is held.
 4. Settings stick across a lens switch, a mode switch, a reconnect and a restart.
-Touches: ControlsPanel, selectLens (shared with the Camera menu), the frame tap, ImageSettingsStore, control messages to the phone, the Mac Core Image sharpening step.
+Touches: ControlsPanel, selectLens (shared with the Camera menu), the frame tap, ImageSettingsStore, control messages to the phone, the Mac Core Image step (sharpening and orientation).
 
 ## Phone cable comes loose mid-call (regular)
 Who and where: Harsha on the Mac in a call, the cable on a mount gets bumped.
@@ -166,6 +167,7 @@ Touches: ADB, VirtualCamera lookup, VideoToolbox.
 - **Mode menu disabled while running against the cool-down switch:** the heat button restarts in 1080p · 30 while the menu mode stays locked; the saved mode then changes under the user.
 - **Cool-down restart against Stop, Quit and a cable drop:** a Stop or Quit during the restart cancels it; a drop during it must not show "Phone disconnected" or a stop notification.
 - **Lens switch against zoom, flashlight and image settings:** the torch resets on a switch; zoom and image settings should carry over; a lens that can't run the mode is not remembered.
+- **Orientation against a lens switch and a reconnect:** the new session's first report carries the new camera's sensor turn, and the last hold carries over; a front and a back camera turn opposite ways.
 - **Reconnect against image settings, lens and zoom:** after the stream comes back the phone's camera setup should match what the menu shows.
 - **Reconnect against Mac sleep:** the quiet window after wake against a phone that really was unplugged.
 - **Check Audio Sync against Stop, a cable drop and a lens switch:** the test ends with a clear message and the window doesn't stay on "Listening".

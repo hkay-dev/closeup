@@ -9,6 +9,7 @@ enum Prefs {
     static let lensID = "lensID"
     static let imageSettings = "imageSettings"
     static let macSharpness = "macSharpness"
+    static let orientation = "orientation"
     static let startOnPlugIn = "startOnPlugIn"
     static let notifications = "notifications"
     static let setupShown = "setupShown"
@@ -523,15 +524,24 @@ private struct InstallerControls: View {
 // MARK: Image settings
 
 /// The saved phone and Mac image settings, which the Live Controls panel changes. onChange runs on main after every change.
+/// The orientation has its own callback and stays put on Reset to Automatic: it's about how the phone is held.
 final class ImageSettingsStore: ObservableObject {
     @Published var phone: PhoneImageSettings { didSet { save() } }
     @Published var macSharpness: Double { didSet { save() } }
+    @Published var orientation: PictureOrientation {
+        didSet {
+            Prefs.defaults.set(orientation.rawValue, forKey: Prefs.orientation)
+            onOrientationChange()
+        }
+    }
     var onChange: () -> Void = {}
+    var onOrientationChange: () -> Void = {}
 
     init() {
         let data = Prefs.defaults.data(forKey: Prefs.imageSettings)
         phone = data.flatMap { try? JSONDecoder().decode(PhoneImageSettings.self, from: $0) } ?? PhoneImageSettings()
         macSharpness = Prefs.defaults.double(forKey: Prefs.macSharpness)
+        orientation = Prefs.defaults.string(forKey: Prefs.orientation).flatMap(PictureOrientation.init(rawValue:)) ?? .landscape
     }
 
     func reset() {

@@ -36,6 +36,16 @@ Indexes follow the option values above: awb `0 auto, 1 daylight, 2 cloudy, 3 inc
 
 Stock camera messages still work: `18` torch (`[u8 18][u8 on]`), `19` zoom in, `20` zoom out.
 
+## Device message
+
+In camera mode the server also writes to the control socket, which stock 5.0.1 leaves unused there. Type `100`, 4 bytes:
+
+```
+[u8 type=100][u8 phone turn][u8 sensor turn][u8 front]
+```
+
+`phone turn` is how far the phone is turned clockwise from its natural (portrait) position, in quarter turns, computed from the accelerometer as `android.view.OrientationEventListener` does, with 15 degrees of hysteresis past each halfway point (`WebcamOrientation.java`). It's `255` while the phone lies flat. `sensor turn` is the camera's `SENSOR_ORIENTATION` in quarter turns, and `front` is `1` for a front camera. The first message goes out as soon as the camera opens, with phone turn `255`, and then one on each change. The app turns the picture itself, so `capture_orientation` stays at its default.
+
 ## Rebuilding
 
 ```sh

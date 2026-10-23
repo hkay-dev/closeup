@@ -247,6 +247,7 @@ struct LiveControlsView: View {
     @Namespace private var lensSpace
     @Namespace private var balanceSpace
     @Namespace private var focusSpace
+    @Namespace private var orientationSpace
 
     private var state: LiveControlsState { model.state }
     private var change: Animation? { Motion.allowed(Motion.stageChange) }
@@ -453,6 +454,28 @@ struct LiveControlsView: View {
                     .id(cameraHint)
                     .transition(Motion.swap)
             }
+            VStack(spacing: 6) {
+                // The chips carry words, so the selected one says it all; no value on the right as white balance has.
+                Text("Orientation").font(.system(size: 12, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 4) {
+                    ForEach(PictureOrientation.allCases, id: \.self) { orientation in
+                        Chip(selected: store.orientation == orientation, space: orientationSpace, id: "orientation") {
+                            store.orientation = orientation
+                        } label: {
+                            Label(orientation == .auto ? "Auto" : orientation.title, systemImage: Self.orientationSymbol(orientation))
+                                .font(.system(size: 11, weight: .medium))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .frame(height: 28)
+                        .accessibilityLabel(orientation.title)
+                        .help(Self.orientationHelp(orientation))
+                    }
+                }
+                .padding(2)
+                .background(Capsule().fill(Color.white.opacity(0.06)))
+            }
+            .animation(change, value: store.orientation)
         }
         .animation(change, value: state.lensID)
         .animation(change, value: cameraHint)
@@ -651,6 +674,22 @@ struct LiveControlsView: View {
         case .cloudy: "Cloudy"
         case .incandescent: "Incandescent"
         case .fluorescent: "Fluorescent"
+        }
+    }
+
+    private static func orientationSymbol(_ orientation: PictureOrientation) -> String {
+        switch orientation {
+        case .landscape: "rectangle"
+        case .portrait: "rectangle.portrait"
+        case .auto: "rotate.right"
+        }
+    }
+
+    private static func orientationHelp(_ orientation: PictureOrientation) -> String {
+        switch orientation {
+        case .landscape: "Hold the phone sideways, either way round"
+        case .portrait: "Hold the phone upright; the tall picture sits between black bars"
+        case .auto: "The picture turns with the phone, for holding it in your hand"
         }
     }
 

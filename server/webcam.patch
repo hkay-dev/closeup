@@ -141,10 +141,31 @@ index b2591d6..1ce0e86 100644
          int x = dis.readInt();
          int y = dis.readInt();
 diff --git a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
-index 55d6e11..cdea7fe 100644
+index 55d6e11..ac2faa6 100644
 --- a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
 +++ b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
-@@ -432,6 +432,9 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+@@ -121,7 +121,8 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+             // Unused for camera
+             this.displayId = Device.DISPLAY_ID_NONE;
+             this.supportsInputEvents = false;
+-            this.sender = null;
++            // Sends the webcam's orientation messages
++            this.sender = new DeviceMessageSender(controlChannel);
+             this.clipboardAutosync = false;
+             this.powerOn = false;
+             this.keepActive = false;
+@@ -177,6 +178,10 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+ 
+     public void setSurfaceCapture(SurfaceCapture surfaceCapture) {
+         this.surfaceCapture = surfaceCapture;
++        if (camera) {
++            ((CameraCapture) surfaceCapture).setOrientationListener(
++                    (device, sensor, front) -> sender.send(DeviceMessage.createWebcamOrientation(device, sensor, front)));
++        }
+     }
+ 
+     private UhidManager getUhidManager() {
+@@ -432,6 +437,9 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
                  case ControlMessage.TYPE_CAMERA_ZOOM_OUT:
                      cameraCapture.zoomOut();
                      return true;
@@ -154,6 +175,51 @@ index 55d6e11..cdea7fe 100644
                  default:
                      // fall through
              }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+index 079a7a0..7ed885c 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+@@ -5,6 +5,7 @@ public final class DeviceMessage {
+     public static final int TYPE_CLIPBOARD = 0;
+     public static final int TYPE_ACK_CLIPBOARD = 1;
+     public static final int TYPE_UHID_OUTPUT = 2;
++    public static final int TYPE_WEBCAM_ORIENTATION = 100;
+ 
+     private int type;
+     private String text;
+@@ -37,6 +38,17 @@ public final class DeviceMessage {
+         return event;
+     }
+ 
++    /**
++     * @param device the phone's turn from its natural position, in clockwise quarter turns, or -1 while it's unknown (lying flat)
++     * @param sensor the camera's SENSOR_ORIENTATION in quarter turns
++     */
++    public static DeviceMessage createWebcamOrientation(int device, int sensor, boolean front) {
++        DeviceMessage event = new DeviceMessage();
++        event.type = TYPE_WEBCAM_ORIENTATION;
++        event.data = new byte[] {(byte) device, (byte) sensor, (byte) (front ? 1 : 0)};
++        return event;
++    }
++
+     public int getType() {
+         return type;
+     }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+index a18a2e5..6589fed 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+@@ -39,6 +39,10 @@ public class DeviceMessageWriter {
+                 dos.writeShort(data.length);
+                 dos.write(data);
+                 break;
++            case DeviceMessage.TYPE_WEBCAM_ORIENTATION:
++                // [u8 device turn, 255 while unknown][u8 sensor turn][u8 front]
++                dos.write(msg.getData());
++                break;
+             default:
+                 throw new ControlProtocolException("Unknown event type: " + type);
+         }
 diff --git a/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java b/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java
 index 4f4605e..312808e 100644
 --- a/server/src/main/java/com/genymobile/scrcpy/util/LogUtils.java
@@ -183,7 +249,7 @@ index 4f4605e..312808e 100644
  
                      if (includeSizes) {
 diff --git a/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java b/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
-index fb52969..b7be6cd 100644
+index fb52969..9dea90a 100644
 --- a/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
 +++ b/server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
 @@ -25,6 +25,8 @@ import android.hardware.camera2.CameraDevice;
@@ -218,15 +284,17 @@ index fb52969..b7be6cd 100644
      private final String explicitCameraId;
      private final CameraFacing cameraFacing;
      private final Size explicitSize;
-@@ -67,6 +78,7 @@ public class CameraCapture extends SurfaceCapture {
+@@ -67,6 +78,9 @@ public class CameraCapture extends SurfaceCapture {
      private final float angle;
      private final boolean initialTorch;
      private float zoom;
 +    private WebcamImage webcamImage;
++    private WebcamOrientation.Listener orientationListener;
++    private WebcamOrientation orientation;
  
      private VideoConstraints videoConstraints;
  
-@@ -89,6 +101,11 @@ public class CameraCapture extends SurfaceCapture {
+@@ -89,6 +103,11 @@ public class CameraCapture extends SurfaceCapture {
      private boolean started;
      private CaptureRequest.Builder requestBuilder;
      private CameraCaptureSession currentSession;
@@ -238,15 +306,35 @@ index fb52969..b7be6cd 100644
  
      public CameraCapture(Options options) {
          this.explicitCameraId = options.getCameraId();
-@@ -103,6 +120,7 @@ public class CameraCapture extends SurfaceCapture {
+@@ -103,6 +122,12 @@ public class CameraCapture extends SurfaceCapture {
          this.angle = options.getAngle();
          this.initialTorch = options.getCameraTorch();
          this.zoom = options.getCameraZoom();
 +        this.webcamImage = options.getWebcamImage();
++    }
++
++    /** Must be set before init; the listener runs on the camera thread. */
++    public void setOrientationListener(WebcamOrientation.Listener listener) {
++        this.orientationListener = listener;
      }
  
      @Override
-@@ -304,7 +322,7 @@ public class CameraCapture extends SurfaceCapture {
+@@ -122,6 +147,14 @@ public class CameraCapture extends SurfaceCapture {
+ 
+             Ln.i("Using camera '" + cameraId + "'");
+             cameraDevice = openCamera(cameraId);
++            if (orientationListener != null) {
++                CameraCharacteristics characteristics = ServiceManager.getCameraManager().getCameraCharacteristics(cameraId);
++                Integer sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
++                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
++                int sensor = sensorOrientation == null ? 0 : sensorOrientation / 90;
++                boolean front = facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT;
++                orientation = WebcamOrientation.start(cameraHandler, sensor, front, orientationListener);
++            }
+         } catch (CameraAccessException | InterruptedException e) {
+             throw new IOException(e);
+         }
+@@ -304,7 +337,7 @@ public class CameraCapture extends SurfaceCapture {
  
                  CameraManager cameraManager = ServiceManager.getCameraManager();
                  try {
@@ -255,7 +343,7 @@ index fb52969..b7be6cd 100644
                      zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
                  } catch (CameraAccessException e) {
                      Ln.w("Could not get camera characteristics");
-@@ -313,6 +331,7 @@ public class CameraCapture extends SurfaceCapture {
+@@ -313,6 +346,7 @@ public class CameraCapture extends SurfaceCapture {
                  try {
                      requestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                      requestBuilder.addTarget(captureSurface);
@@ -263,7 +351,7 @@ index fb52969..b7be6cd 100644
  
                      if (fps > 0) {
                          requestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(fps, fps));
-@@ -327,6 +346,8 @@ public class CameraCapture extends SurfaceCapture {
+@@ -327,6 +361,8 @@ public class CameraCapture extends SurfaceCapture {
                          requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
                      }
  
@@ -272,7 +360,7 @@ index fb52969..b7be6cd 100644
                      CaptureRequest request = requestBuilder.build();
                      setRepeatingRequest(session, request);
                      currentSession = session;
-@@ -367,6 +388,8 @@ public class CameraCapture extends SurfaceCapture {
+@@ -367,6 +403,8 @@ public class CameraCapture extends SurfaceCapture {
              }
              currentSession = null;
              requestBuilder = null;
@@ -281,7 +369,17 @@ index fb52969..b7be6cd 100644
              started = false;
          });
  
-@@ -457,6 +480,13 @@ public class CameraCapture extends SurfaceCapture {
+@@ -378,6 +416,9 @@ public class CameraCapture extends SurfaceCapture {
+ 
+     @Override
+     public void release() {
++        if (orientation != null) {
++            orientation.stop();
++        }
+         if (cameraDevice != null) {
+             cameraDevice.close();
+         }
+@@ -457,6 +498,13 @@ public class CameraCapture extends SurfaceCapture {
                  // Called for each frame captured, do nothing
              }
  
@@ -295,7 +393,7 @@ index fb52969..b7be6cd 100644
              @Override
              public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
                  Ln.w("Camera capture failed: frame " + failure.getFrameNumber());
-@@ -472,6 +502,116 @@ public class CameraCapture extends SurfaceCapture {
+@@ -472,6 +520,116 @@ public class CameraCapture extends SurfaceCapture {
          }
      }
  
@@ -446,5 +544,106 @@ index 0000000..120f87a
 +            }
 +        }
 +        throw new IllegalArgumentException("Invalid value for " + key + ": \"" + value + "\"");
++    }
++}
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/WebcamOrientation.java b/server/src/main/java/com/genymobile/scrcpy/video/WebcamOrientation.java
+new file mode 100644
+index 0000000..8735f17
+--- /dev/null
++++ b/server/src/main/java/com/genymobile/scrcpy/video/WebcamOrientation.java
+@@ -0,0 +1,95 @@
++package com.genymobile.scrcpy.video;
++
++import com.genymobile.scrcpy.FakeContext;
++import com.genymobile.scrcpy.util.Ln;
++
++import android.content.Context;
++import android.hardware.Sensor;
++import android.hardware.SensorEvent;
++import android.hardware.SensorEventListener;
++import android.hardware.SensorManager;
++import android.os.Handler;
++
++/**
++ * Reports which way up the phone is held, from the accelerometer, so the computer can turn the picture upright.
++ * The angle is computed like android.view.OrientationEventListener's; while the phone lies flat, the last turn holds.
++ */
++public final class WebcamOrientation implements SensorEventListener {
++
++    public interface Listener {
++        /**
++         * @param device the phone's clockwise quarter turns from its natural position, or -1 while unknown
++         * @param sensor the camera's SENSOR_ORIENTATION in quarter turns
++         */
++        void onOrientation(int device, int sensor, boolean front);
++    }
++
++    // Degrees past the halfway point between two turns before the turn changes, so a phone held near 45 degrees doesn't flicker
++    private static final int HYSTERESIS = 15;
++
++    private final SensorManager sensorManager;
++    private final int sensor;
++    private final boolean front;
++    private final Listener listener;
++    private int device = -1;
++
++    private WebcamOrientation(SensorManager sensorManager, int sensor, boolean front, Listener listener) {
++        this.sensorManager = sensorManager;
++        this.sensor = sensor;
++        this.front = front;
++        this.listener = listener;
++    }
++
++    /**
++     * Reports the camera at once with an unknown turn, then each turn the phone settles on. Without an accelerometer,
++     * only the first report is sent.
++     */
++    public static WebcamOrientation start(Handler handler, int sensor, boolean front, Listener listener) {
++        listener.onOrientation(-1, sensor, front);
++        SensorManager sensorManager = (SensorManager) FakeContext.get().getSystemService(Context.SENSOR_SERVICE);
++        Sensor accelerometer = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
++        if (accelerometer == null) {
++            Ln.w("No accelerometer, the picture won't turn with the phone");
++            return null;
++        }
++        WebcamOrientation orientation = new WebcamOrientation(sensorManager, sensor, front, listener);
++        if (!sensorManager.registerListener(orientation, accelerometer, SensorManager.SENSOR_DELAY_UI, handler)) {
++            Ln.w("Could not read the accelerometer, the picture won't turn with the phone");
++            return null;
++        }
++        return orientation;
++    }
++
++    public void stop() {
++        sensorManager.unregisterListener(this);
++    }
++
++    @Override
++    public void onSensorChanged(SensorEvent event) {
++        float x = -event.values[0];
++        float y = -event.values[1];
++        float z = -event.values[2];
++        // Lying flat (tilted more than about 63 degrees from upright): no way up to tell
++        if ((x * x + y * y) * 4 < z * z) {
++            return;
++        }
++        int angle = 90 - Math.round((float) Math.toDegrees(Math.atan2(-y, x)));
++        angle = ((angle % 360) + 360) % 360;
++        if (device >= 0) {
++            int fromCurrent = Math.abs(((angle - device * 90 + 540) % 360) - 180);
++            if (fromCurrent < 45 + HYSTERESIS) {
++                return;
++            }
++        }
++        int turn = ((angle + 45) / 90) % 4;
++        if (turn != device) {
++            device = turn;
++            listener.onOrientation(device, sensor, front);
++        }
++    }
++
++    @Override
++    public void onAccuracyChanged(Sensor sensor, int accuracy) {
++        // Not needed
 +    }
 +}

@@ -18,7 +18,7 @@ enum Plain {
     static let garbled = "The phone's video arrived damaged. Start again, and check the cable if it keeps happening."
     static let obs = "OBS's camera extension isn't taking video. Open OBS, click Start Virtual Camera and then Stop, quit OBS and start again."
     static let frame = "A frame couldn't be prepared for the camera. Start again."
-    static let sharpen = "Mac sharpening failed."
+    static let process = "Mac picture processing failed."
 }
 
 func checkStatus(_ status: OSStatus, _ operation: String, _ plain: String) throws {
@@ -277,43 +277,61 @@ final class FrameSampler {
     }
 }
 
-/// Sharpens NV12 frames with Core Image on the GPU. Thread-safe amount; 0 returns the input unchanged.
-final class FrameSharpener {
+/// Sharpens and turns NV12 frames with Core Image on the GPU, keeping their size. A sideways (tall) picture is fitted
+/// between black bars. Thread-safe settings; with neither set, the input passes through.
+final class FrameProcessor {
     private let context: CIContext
-    private let filter = CIFilter.sharpenLuminance()
-    private let amountLock = NSLock()
+    private let sharpen = CIFilter.sharpenLuminance()
+    private let scale = CIFilter.lanczosScaleTransform()
+    private let settingsLock = NSLock()
     private let renderLock = NSLock()
     private var storedAmount: Float = 0
+    private var storedTurns = 0
     private var pool: CVPixelBufferPool?
     private var poolWidth = 0, poolHeight = 0
     private var poolFormat: OSType = 0
     private var failureLogged = false
+    /// What Core Image does to show a picture turned this many quarter turns clockwise.
+    private static let orientations: [CGImagePropertyOrientation] = [.up, .right, .down, .left]
 
     init() {
         // No color management: Core Image converts YCbCr to RGB with the frame's matrix, sharpens,
         // and converts back with the same matrix, so colors don't shift.
         context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull(),
                                       .cacheIntermediates: false, .useSoftwareRenderer: false])
-        filter.radius = 1.5
+        sharpen.radius = 1.5
+        scale.aspectRatio = 1
     }
 
+    /// 0 = off ... 1 = strong.
     var amount: Float {
-        get { amountLock.lock(); defer { amountLock.unlock() }; return storedAmount }
-        set { amountLock.lock(); storedAmount = min(max(newValue, 0), 1); amountLock.unlock() }
+        get { settingsLock.lock(); defer { settingsLock.unlock() }; return storedAmount }
+        set { settingsLock.lock(); storedAmount = min(max(newValue, 0), 1); settingsLock.unlock() }
+    }
+
+    /// Clockwise quarter turns, 0...3.
+    var turns: Int {
+        get { settingsLock.lock(); defer { settingsLock.unlock() }; return storedTurns }
+        set { settingsLock.lock(); storedTurns = ((newValue % 4) + 4) % 4; settingsLock.unlock() }
     }
 
     func process(_ frame: CVPixelBuffer) -> CVPixelBuffer {
-        let amount = self.amount
-        guard amount > 0 else { return frame }
+        settingsLock.lock(); let amount = storedAmount, turns = storedTurns; settingsLock.unlock()
+        guard amount > 0 || turns != 0 else { return frame }
         renderLock.lock(); defer { renderLock.unlock() }
         do {
             let output = try outputBuffer(like: frame)
             // Copy the color tags first: Core Image picks the RGB to YCbCr matrix from the destination's tags.
             CVBufferPropagateAttachments(frame, output)
-            filter.inputImage = CIImage(cvPixelBuffer: frame, options: [.colorSpace: NSNull()])
-            filter.sharpness = amount
-            defer { filter.inputImage = nil }
-            guard let image = filter.outputImage else { throw WebcamError(message: Plain.sharpen, detail: "The sharpen filter gave no image.") }
+            var image = CIImage(cvPixelBuffer: frame, options: [.colorSpace: NSNull()])
+            defer { sharpen.inputImage = nil; scale.inputImage = nil }
+            if amount > 0 {
+                sharpen.inputImage = image
+                sharpen.sharpness = amount
+                guard let sharpened = sharpen.outputImage else { throw WebcamError(message: Plain.process, detail: "The sharpen filter gave no image.") }
+                image = sharpened
+            }
+            if turns != 0 { image = try turn(image, by: turns, into: CGSize(width: CVPixelBufferGetWidth(frame), height: CVPixelBufferGetHeight(frame))) }
             let destination = CIRenderDestination(pixelBuffer: output)
             destination.colorSpace = nil
             _ = try context.startTask(toRender: image, to: destination).waitUntilCompleted()
@@ -321,10 +339,23 @@ final class FrameSharpener {
         } catch {
             if !failureLogged {
                 failureLogged = true
-                fputs("Mac sharpening failed, sending frames unsharpened: \(error.logText)\n", stderr)
+                fputs("Mac picture processing failed, sending frames as they came. \(error.logText)\n", stderr)
             }
             return frame
         }
+    }
+
+    /// Turns the picture and fits it into size, centered on black.
+    private func turn(_ image: CIImage, by turns: Int, into size: CGSize) throws -> CIImage {
+        var turned = image.oriented(Self.orientations[turns])
+        turned = turned.transformed(by: CGAffineTransform(translationX: -turned.extent.minX, y: -turned.extent.minY))
+        guard turns % 2 == 1 else { return turned }
+        scale.inputImage = turned
+        scale.scale = Float(min(size.width / turned.extent.width, size.height / turned.extent.height))
+        guard let fitted = scale.outputImage else { throw WebcamError(message: Plain.process, detail: "The scale filter gave no image.") }
+        let centered = fitted.transformed(by: CGAffineTransform(translationX: ((size.width - fitted.extent.width) / 2).rounded(),
+                                                                 y: ((size.height - fitted.extent.height) / 2).rounded()))
+        return centered.composited(over: CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size)))
     }
 
     /// A buffer from a pool of IOSurface-backed NV12 buffers matching the frame, rebuilt when its size or format changes.
@@ -332,7 +363,7 @@ final class FrameSharpener {
         let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
         let format = CVPixelBufferGetPixelFormatType(frame)
         guard format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        else { throw WebcamError(message: Plain.sharpen, detail: "Sharpening needs NV12 frames.") }
+        else { throw WebcamError(message: Plain.process, detail: "Processing needs NV12 frames.") }
         if pool == nil || width != poolWidth || height != poolHeight || format != poolFormat {
             pool = nil
             let attributes = [
@@ -343,11 +374,11 @@ final class FrameSharpener {
                 kCVPixelBufferMetalCompatibilityKey: true
             ] as CFDictionary
             let poolAttributes = [kCVPixelBufferPoolMinimumBufferCountKey: 4] as CFDictionary
-            try checkStatus(CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes, attributes, &pool), "Creating sharpening buffers", Plain.sharpen)
+            try checkStatus(CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes, attributes, &pool), "Creating processing buffers", Plain.process)
             poolWidth = width; poolHeight = height; poolFormat = format
         }
         var output: CVPixelBuffer?
-        try checkStatus(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool!, &output), "Getting a sharpening buffer", Plain.sharpen)
+        try checkStatus(CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool!, &output), "Getting a processing buffer", Plain.process)
         return output!
     }
 }
