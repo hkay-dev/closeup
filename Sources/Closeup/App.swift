@@ -778,6 +778,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         connect.target = self
         connect.image = Self.symbol(["wifi"])
         phoneMenu.addItem(connect)
+        // Drawn like the phone rows, which size the submenu; a system row beside them was cut short.
+        connect.view = MenuRowView(connect, checkColumn: true)
     }
 
     private func rebuildCameraMenu() {
@@ -1506,13 +1508,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = "Why \u{201C}OBS Virtual Camera\u{201D}?"
-            alert.informativeText = """
-                \(appName) borrows the virtual camera that OBS installs, and OBS got to name it.
+            // NSAlert's own text can't hold bold words, so the words go in an accessory label that looks the same.
+            let size = NSFont.smallSystemFontSize
+            let plain: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.labelColor]
+            let text = NSMutableAttributedString(string: """
+                \(appName) borrows OBS's virtual camera, a system-level driver that OBS installs, and OBS got to name it.
 
-                A camera of \(appName)'s own needs a paid Apple developer account and notarization. As much as I love \
-                open source, I can't justify that bill just to rename a camera. And even if I paid it, you still \
-                wouldn't get to pick the name. It'd just say \(appName).
-                """
+                A driver of \(appName)'s own needs a\u{20}
+                """, attributes: plain)
+            text.append(NSAttributedString(string: "paid Apple developer account and notarization",
+                                           attributes: plain.merging([.font: NSFont.boldSystemFont(ofSize: size)]) { $1 }))
+            text.append(NSAttributedString(string: """
+                . As much as I love open source, I can't justify that bill just to rename a camera. Even if I paid it, \
+                you still wouldn't get to pick the name. It'd just say \(appName).
+                """, attributes: plain))
+            let label = NSTextField(wrappingLabelWithString: "")
+            label.attributedStringValue = text
+            let width: CGFloat = 220
+            label.preferredMaxLayoutWidth = width
+            let height = label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 10_000)).height ?? 160
+            // A plain view keeps the frame given; the alert sizes a bare text field by its own guess and cut the end off.
+            let holder = NSView(frame: NSRect(x: 0, y: 0, width: width, height: ceil(height) + 2))
+            label.frame = holder.bounds
+            label.autoresizingMask = [.width, .height]
+            holder.addSubview(label)
+            alert.accessoryView = holder
             alert.addButton(withTitle: "Fair Enough")
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
@@ -1529,6 +1549,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     /// Connect a Phone over Wi-Fi…: turns the switch on, since a paired phone is no use while the app hides it.
     @objc private func showPairing() {
+        menu.cancelTracking()
         if !Wireless.enabled, !Wireless.forcedByEnvironment {
             Prefs.defaults.set(true, forKey: Wireless.defaultsKey)
             wirelessChanged()
