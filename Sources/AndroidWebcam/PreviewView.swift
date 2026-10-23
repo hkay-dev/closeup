@@ -9,6 +9,8 @@ final class PreviewView: NSView {
     struct Veil: Equatable {
         var title: String
         var text: String?
+        /// The app is working (starting, stopping, switching camera, reconnecting): a loader shows above the words.
+        var busy: Bool = false
     }
 
     let display = AVSampleBufferDisplayLayer()
@@ -19,6 +21,7 @@ final class PreviewView: NSView {
     private let veilWords = NSStackView()
     private let veilTitle = NSTextField(wrappingLabelWithString: "")
     private let veilText = NSTextField(wrappingLabelWithString: "")
+    private let spinner = Spinner()
     private var shownVeil: Veil?
 
     init(frame: NSRect, titleSize: CGFloat, textSize: CGFloat) {
@@ -51,6 +54,10 @@ final class PreviewView: NSView {
         veilWords.spacing = 3
         veilWords.translatesAutoresizingMaskIntoConstraints = false
         veil.addSubview(veilWords)
+        spinner.alphaValue = 0
+        spinner.isHidden = true
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        veil.addSubview(spinner)
         addSubview(veil)
         NSLayoutConstraint.activate([
             veil.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -60,6 +67,10 @@ final class PreviewView: NSView {
             veilWords.centerXAnchor.constraint(equalTo: veil.centerXAnchor),
             veilWords.centerYAnchor.constraint(equalTo: veil.centerYAnchor),
             veilWords.widthAnchor.constraint(lessThanOrEqualTo: veil.widthAnchor, constant: -32),
+            spinner.widthAnchor.constraint(equalToConstant: 20),
+            spinner.heightAnchor.constraint(equalToConstant: 20),
+            spinner.centerXAnchor.constraint(equalTo: veil.centerXAnchor),
+            spinner.bottomAnchor.constraint(equalTo: veilWords.topAnchor, constant: -10),
         ])
     }
 
@@ -105,18 +116,46 @@ final class PreviewView: NSView {
     }
 
     /// Fades the veil in or out, or swaps its words: the old ones leave quickly and the new ones come in a beat later.
+    /// The loader above them fades in and out as `busy` changes.
     func setVeil(_ new: Veil?) {
         guard new != shownVeil else { return }
-        let wasShown = shownVeil != nil
+        let old = shownVeil
+        let wasShown = old != nil && !veil.isHidden
         shownVeil = new
-        guard let new else { fade(veil, to: 0); return }
-        let words = {
-            self.veilTitle.stringValue = new.title
-            self.veilText.stringValue = new.text ?? ""
-            self.veilText.isHidden = new.text == nil
+        guard let new else {
+            fade(veil, to: 0)
+            // Stop turning once the veil is gone, unless a new busy veil came in meanwhile.
+            DispatchQueue.main.asyncAfter(deadline: .now() + Motion.duration) { [weak self] in self?.armSpinner() }
+            return
         }
-        if wasShown, !veil.isHidden { swapContents(of: veilWords, words) } else { words() }
+        if old?.title != new.title || old?.text != new.text || !wasShown {
+            let words = {
+                self.veilTitle.stringValue = new.title
+                self.veilText.stringValue = new.text ?? ""
+                self.veilText.isHidden = new.text == nil
+            }
+            if wasShown { swapContents(of: veilWords, words) } else { words() }
+        }
+        if wasShown {
+            fade(spinner, to: new.busy ? 1 : 0)
+        } else {
+            spinner.alphaValue = new.busy ? 1 : 0
+            spinner.isHidden = !new.busy
+        }
+        armSpinner()
         fade(veil, to: 1)
+    }
+
+    /// The loader turns only while a busy veil is up and the view is on screen.
+    private func armSpinner() {
+        let on = shownVeil?.busy == true
+        spinner.spin(on)
+        if !on, shownVeil == nil { spinner.alphaValue = 0; spinner.isHidden = true }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        armSpinner()
     }
 }
 
@@ -178,13 +217,14 @@ enum Motion {
     }
 }
 
-/// Fades a view in or out. A view that's faded out is hidden too, so VoiceOver skips it.
-func fade(_ view: NSView, to alpha: CGFloat) {
+/// Fades a view in or out. A view that's faded out is hidden too, so VoiceOver skips it. `then` runs once it's done.
+func fade(_ view: NSView, to alpha: CGFloat, then done: (() -> Void)? = nil) {
     if alpha > 0 { view.isHidden = false }
-    guard view.alphaValue != alpha else { return }
+    guard view.alphaValue != alpha else { done?(); return }
     guard !Motion.reduced, view.window != nil else {
         view.alphaValue = alpha
         view.isHidden = alpha == 0
+        done?()
         return
     }
     NSAnimationContext.runAnimationGroup { context in
@@ -193,7 +233,18 @@ func fade(_ view: NSView, to alpha: CGFloat) {
         view.animator().alphaValue = alpha
     } completionHandler: {
         if view.alphaValue == 0 { view.isHidden = true }
+        done?()
     }
+}
+
+/// Call just before a layer-backed view's text, image or color changes, and the change fades in over the old look.
+func crossfade(_ view: NSView) {
+    guard !Motion.reduced, view.window != nil, !view.isHiddenOrHasHiddenAncestor, let layer = view.layer else { return }
+    let transition = CATransition()
+    transition.type = .fade
+    transition.duration = Motion.duration
+    transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    layer.add(transition, forKey: "crossfade")
 }
 
 /// Changes what a view shows the way `Motion.swap` does in SwiftUI: a picture of the old look leaves in 0.1 s and the
@@ -223,4 +274,47 @@ func swapContents(of view: NSView, _ change: () -> Void) {
     CATransaction.commit()
     change()
     layer.add(Motion.spring("opacity", from: 0, to: 1, delay: Motion.incomingDelay), forKey: "swap")
+}
+
+/// A small white ring with a gap that turns once a second, for the veil while the app is working.
+private final class Spinner: NSView {
+    private let ring = CAShapeLayer()
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        ring.fillColor = nil
+        ring.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        ring.lineWidth = 2
+        ring.lineCap = .round
+        ring.strokeEnd = 0.75
+        layer?.addSublayer(ring)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init().") }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 20, height: 20) }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.frame = bounds
+        ring.path = CGPath(ellipseIn: bounds.insetBy(dx: 1, dy: 1), transform: nil)
+        CATransaction.commit()
+    }
+
+    /// Turns while on. Under Reduce Motion the ring stays still.
+    func spin(_ on: Bool) {
+        guard on, !Motion.reduced, window != nil else { ring.removeAnimation(forKey: "spin"); return }
+        guard ring.animation(forKey: "spin") == nil else { return }
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+        turn.fromValue = 0
+        turn.toValue = -2 * Double.pi
+        turn.duration = 1
+        turn.repeatCount = .infinity
+        turn.timingFunction = CAMediaTimingFunction(name: .linear)
+        ring.add(turn, forKey: "spin")
+    }
 }

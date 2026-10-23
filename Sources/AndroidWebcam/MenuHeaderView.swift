@@ -35,7 +35,7 @@ final class MenuHeaderView: NSView {
     }
 
     static let width: CGFloat = 300
-    private static let pictureSize = NSSize(width: 288, height: 162)
+    private static let pictureSize = NSSize(width: 268, height: 151)
     /// The phone's temperature in the Mac's unit, for the header and the heat notification.
     static let temperature: MeasurementFormatter = {
         let formatter = MeasurementFormatter()
@@ -73,6 +73,7 @@ final class MenuHeaderView: NSView {
     private let stack = NSStackView()
     private var content: Content?
     private var loggedPictureError = false
+    private var symbolNames: [NSImageView: String] = [:]
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 60))
@@ -115,10 +116,12 @@ final class MenuHeaderView: NSView {
         nameRow.spacing = 8
 
         // Plain values, no pills: only the status gets a badge.
+        for label in [nameLabel, linkLabel, tempLabel, batteryLabel] { label.wantsLayer = true }
         for label in [linkLabel, tempLabel, batteryLabel] {
             label.font = .monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
         }
         for icon in [linkIcon, tempIcon, batteryIcon, boltIcon] {
+            icon.wantsLayer = true
             icon.contentTintColor = .secondaryLabelColor
             icon.symbolConfiguration = .init(pointSize: 14, weight: .regular)
         }
@@ -130,20 +133,20 @@ final class MenuHeaderView: NSView {
 
         noteLabel.font = .systemFont(ofSize: 12)
         noteLabel.textColor = .secondaryLabelColor
-        noteLabel.preferredMaxLayoutWidth = Self.width - 28
+        noteLabel.preferredMaxLayoutWidth = Self.width - 32
 
         let text = NSStackView(views: [nameRow, readings, noteLabel])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 8
         text.setCustomSpacing(4, after: readings)
-        text.edgeInsets = NSEdgeInsets(top: 2, left: 4, bottom: 0, right: 4)
+        text.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 0, right: 0)
 
         stack.setViews([picture, text], in: .top)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 8, right: 6)
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 16, bottom: 8, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
@@ -151,15 +154,15 @@ final class MenuHeaderView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stackWidth,
-            picture.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -12),
+            picture.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32),
             picture.heightAnchor.constraint(equalTo: picture.widthAnchor, multiplier: 9.0 / 16),
             badge.leadingAnchor.constraint(equalTo: picture.leadingAnchor, constant: 8),
             badge.topAnchor.constraint(equalTo: picture.topAnchor, constant: 8),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
             statusRow.heightAnchor.constraint(equalToConstant: 22),
-            nameRow.widthAnchor.constraint(equalTo: picture.widthAnchor, constant: -8),
-            readings.widthAnchor.constraint(equalTo: picture.widthAnchor, constant: -8),
+            nameRow.widthAnchor.constraint(equalTo: picture.widthAnchor),
+            readings.widthAnchor.constraint(equalTo: picture.widthAnchor),
             statusLabel.widthAnchor.constraint(lessThanOrEqualTo: picture.widthAnchor, constant: -40),
         ])
     }
@@ -170,7 +173,7 @@ final class MenuHeaderView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         guard newSize.width != stackWidth.constant else { return super.setFrameSize(newSize) }
         stackWidth.constant = newSize.width
-        noteLabel.preferredMaxLayoutWidth = newSize.width - 28
+        noteLabel.preferredMaxLayoutWidth = newSize.width - 32
         stack.layoutSubtreeIfNeeded()
         super.setFrameSize(NSSize(width: newSize.width, height: stack.fittingSize.height))
     }
@@ -254,16 +257,28 @@ final class MenuHeaderView: NSView {
         fade(badge, to: content.picture?.badge == nil ? 0 : 1)
         pulse()
 
-        nameLabel.stringValue = content.phone?.name ?? ""
-        nameLabel.isHidden = content.phone == nil
+        if let name = content.phone?.name {
+            setText(nameLabel, name)
+            fade(nameLabel, to: 1)
+        } else {
+            fade(nameLabel, to: 0) { self.relayout() }
+        }
         showReadings(content.phone, content.stats)
 
-        let note = {
-            self.noteLabel.stringValue = content.note ?? ""
-            self.noteLabel.isHidden = content.note == nil
+        // A gone note keeps its words while it fades out.
+        if let text = content.note {
+            let show = { self.noteLabel.stringValue = text }
+            if old?.note != nil, old?.note != text { swapContents(of: noteLabel, show) } else { show() }
+            fade(noteLabel, to: 1)
+        } else {
+            fade(noteLabel, to: 0) { self.relayout() }
         }
-        if old?.note != nil, content.note != nil, old?.note != content.note { swapContents(of: noteLabel, note) } else { note() }
 
+        relayout()
+    }
+
+    /// The header's height follows what's showing, so it's set again once a fade has hidden something.
+    private func relayout() {
         stack.layoutSubtreeIfNeeded()
         setFrameSize(NSSize(width: stackWidth.constant, height: stack.fittingSize.height))
     }
@@ -271,33 +286,58 @@ final class MenuHeaderView: NSView {
     /// At or under this, and not charging, the battery reads red.
     static let lowBattery = 20
 
+    /// Sets a value's words and color, fading from the old look when either changed.
+    private func setText(_ label: NSTextField, _ text: String, color: NSColor? = nil) {
+        let recolor = color != nil && label.textColor != color
+        guard label.stringValue != text || recolor else { return }
+        crossfade(label)
+        label.stringValue = text
+        if let color { label.textColor = color }
+    }
+
+    /// Sets an icon's symbol (the first of `names` the system has) and tint. A new symbol morphs on macOS 14 and
+    /// up and crossfades before that; a new tint crossfades.
+    private func setSymbol(_ icon: NSImageView, _ names: [String], tint: NSColor) {
+        guard let name = names.first(where: { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }),
+              let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return }
+        let before = symbolNames[icon]
+        symbolNames[icon] = name
+        let changed = before != nil && before != name
+        let retinted = icon.contentTintColor != tint
+        if changed, window != nil, !Motion.reduced, #available(macOS 14, *) {
+            icon.contentTintColor = tint
+            icon.setSymbolImage(image, contentTransition: .replace)
+            return
+        }
+        if before != nil, changed || retinted { crossfade(icon) }
+        icon.image = image
+        icon.contentTintColor = tint
+    }
+
     /// Connection, temperature and battery as plain values. A warm phone or a low battery changes color, and its
     /// tooltip says why; the words carry it for VoiceOver.
     private func showReadings(_ phone: Phone?, _ stats: PhoneStats?) {
-        readings.isHidden = phone == nil
-        guard let phone else { return }
+        guard let phone else { fade(readings, to: 0) { self.relayout() }; return }
+        fade(readings, to: 1)
         let link: (symbols: [String], text: String, tip: String) = switch phone.link {
         case .usb: (["cable.connector", "cable.connector.horizontal"], "USB", "Connected over USB")
         case .wifi: (["wifi"], "Wi-Fi", "Connected over Wi-Fi")
         case nil: (["iphone.slash", "wifi.slash"], "Not connected", "The phone isn't on USB or Wi-Fi")
         }
-        linkIcon.image = link.symbols.lazy.compactMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }.first
-        linkLabel.stringValue = link.text
-        linkLabel.textColor = phone.link == nil ? .secondaryLabelColor : .labelColor
+        setSymbol(linkIcon, link.symbols, tint: .secondaryLabelColor)
+        setText(linkLabel, link.text, color: phone.link == nil ? .secondaryLabelColor : .labelColor)
         linkGroup.toolTip = link.tip
         linkGroup.setAccessibilityElement(true)
         linkGroup.setAccessibilityLabel(phone.link == nil ? "Phone not connected" : link.tip)
 
         let shown = phone.link != nil ? stats : nil
-        for view in [tempDivider, tempGroup, batteryDivider, batteryGroup] as [NSView] { view.isHidden = shown == nil }
+        for view in [tempDivider, tempGroup, batteryDivider, batteryGroup] as [NSView] { fade(view, to: shown == nil ? 0 : 1) }
         guard let stats = shown else { return }
         let hot = stats.isHot
         let celsius = Measurement(value: stats.temperatureC, unit: UnitTemperature.celsius)
         let spoken = Self.spokenTemperature.string(from: celsius)
-        tempIcon.image = NSImage(systemSymbolName: hot ? "thermometer.high" : "thermometer.medium", accessibilityDescription: nil)
-        tempIcon.contentTintColor = hot ? .systemOrange : .secondaryLabelColor
-        tempLabel.stringValue = Self.temperature.string(from: celsius)
-        tempLabel.textColor = hot ? .systemOrange : .labelColor
+        setSymbol(tempIcon, [hot ? "thermometer.high" : "thermometer.medium"], tint: hot ? .systemOrange : .secondaryLabelColor)
+        setText(tempLabel, Self.temperature.string(from: celsius), color: hot ? .systemOrange : .labelColor)
         let tempTip = hot ? "The phone is getting hot. A hot phone can drop frames or stop the camera." : "Phone temperature"
         tempGroup.toolTip = tempTip
         tempGroup.setAccessibilityElement(true)
@@ -305,11 +345,9 @@ final class MenuHeaderView: NSView {
 
         let low = stats.batteryPercent <= Self.lowBattery && !stats.charging
         let level = [100, 75, 50, 25].first { stats.batteryPercent >= $0 - 12 } ?? 0
-        batteryIcon.image = NSImage(systemSymbolName: "battery.\(level)", accessibilityDescription: nil)
-        batteryIcon.contentTintColor = low ? .systemRed : .secondaryLabelColor
-        batteryLabel.stringValue = "\(stats.batteryPercent)%"
-        batteryLabel.textColor = low ? .systemRed : .labelColor
-        boltIcon.isHidden = !stats.charging
+        setSymbol(batteryIcon, ["battery.\(level)"], tint: low ? .systemRed : .secondaryLabelColor)
+        setText(batteryLabel, "\(stats.batteryPercent)%", color: low ? .systemRed : .labelColor)
+        fade(boltIcon, to: stats.charging ? 1 : 0)
         let batteryTip = low ? "The battery is low and the phone isn't charging." : stats.charging ? "Battery, charging" : "Battery"
         batteryGroup.toolTip = batteryTip
         batteryGroup.setAccessibilityElement(true)
