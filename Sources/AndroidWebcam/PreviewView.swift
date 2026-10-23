@@ -12,6 +12,8 @@ final class PreviewView: NSView {
     }
 
     let display = AVSampleBufferDisplayLayer()
+    private let still = CALayer()
+    private var stillImage: CGImage?
     private let sampler = FrameSampler(fps: 30)
     private let veil = NSView()
     private let veilWords = NSStackView()
@@ -26,6 +28,9 @@ final class PreviewView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
         display.videoGravity = .resizeAspect
         layer?.addSublayer(display)
+        still.contentsGravity = .resizeAspectFill
+        still.opacity = 0
+        layer?.addSublayer(still)
 
         // White on a dark wash, like the system's own video overlays.
         veil.wantsLayer = true
@@ -67,6 +72,7 @@ final class PreviewView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         display.frame = bounds
+        still.frame = bounds
         CATransaction.commit()
     }
 
@@ -84,6 +90,19 @@ final class PreviewView: NSView {
     }
 
     func clear() { display.flushAndRemoveImage() }
+
+    /// A picture over the video layer and under the veil, such as the last frame once the webcam stops. Fades in and out.
+    func setStill(_ image: CGImage?) {
+        guard image !== stillImage else { return }
+        stillImage = image
+        // The old picture stays in the layer while it fades out.
+        if let image { still.contents = image }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = still.presentation()?.opacity ?? still.opacity
+        fade.duration = Motion.reduced ? 0 : Motion.duration
+        still.opacity = image == nil ? 0 : 1
+        still.add(fade, forKey: "fade")
+    }
 
     /// Fades the veil in or out, or swaps its words: the old ones leave quickly and the new ones come in a beat later.
     func setVeil(_ new: Veil?) {

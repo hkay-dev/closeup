@@ -7,7 +7,7 @@ struct LiveControlsState: Equatable {
     var status = ""
     var model: String?
     var stats: PhoneStats?
-    var badge: String?          // "LIVE 0:42" while the picture is live
+    var badge: String?          // "LIVE" while the picture is live
     var note: String?           // the header's note, unless it's the lens note below
     var lenses: [CameraLens] = []
     var lensID: String?

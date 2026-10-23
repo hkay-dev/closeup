@@ -597,7 +597,8 @@ final class CaptureController {
         return !stopping && statsGeneration == run
     }
 
-    private static func phoneStats(serial: String) throws -> PhoneStats {
+    /// Battery and temperature from the phone's dumpsys, also read for the menu while the webcam is off.
+    static func phoneStats(serial: String) throws -> PhoneStats {
         var battery: [String: String] = [:]
         for line in try ADB.command(["-s", serial, "shell", "dumpsys", "battery"]).split(separator: "\n") {
             let parts = line.split(separator: ":", maxSplits: 1)

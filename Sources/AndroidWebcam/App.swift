@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let modeMenu = NSMenu()
     private let orientationMenu = NSMenu()
     private let cameraMenu = NSMenu()
+    private let modeLocked = AppDelegate.lockedNote()
     // What each submenu was last built from. Rebuilding a submenu while it's open loses the highlight.
     private var phoneMenuKey: String?
     private var cameraMenuKey: String?
@@ -119,6 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// The phone has been upright for 2 s while live, from its motion sensor.
     private var heldUpright = false
     private var holdCheck: DispatchWorkItem?
+    /// The newest frame while running, kept for the stopped header's blurred last picture. Guarded by frameLock.
+    private var newestFrame: CVPixelBuffer?
+    private var lastStill: CGImage?
+    /// Battery and temperature for phones that are ready but not running, read when the menu opens.
+    private var readyStats: [String: PhoneStats] = [:]
+    private var readyStatsAsked: [String: Date] = [:]
+    private var statusClock: Timer?
 
     private var signalSources: [DispatchSourceSignal] = []
     private var devControl: DevControl?
@@ -188,14 +196,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             (zoomIn, ["plus.magnifyingglass"]), (zoomOut, ["minus.magnifyingglass"]), (flashlight, ["flashlight.on.fill"]),
         ]
         for (item, names) in symbols { item.image = Self.symbol(names) }
-        for (index, mode) in CaptureMode.all.enumerated() {
-            let item = NSMenuItem(title: mode.title, action: #selector(selectMode(_:)), keyEquivalent: "")
+        // Coolest first, and the experimental mode apart at the end. Tags stay CaptureMode.all indexes.
+        let modes = CaptureMode.all.indices.sorted {
+            func rank(_ mode: CaptureMode) -> (Int, Int) { (mode.fps > 60 ? 1 : 0, Int(mode.width) * Int(mode.height) * Int(mode.fps)) }
+            return rank(CaptureMode.all[$0]) < rank(CaptureMode.all[$1])
+        }
+        for index in modes {
+            let mode = CaptureMode.all[index]
+            if mode.fps > 60 { modeMenu.addItem(.separator()) }
+            let item = NSMenuItem(title: "\(Self.shortTitle(mode)) fps", action: #selector(selectMode(_:)), keyEquivalent: "")
             item.tag = index
+            Self.describe(item, mode.fps > 60 ? "Experimental. Not every phone can run it"
+                : mode.height >= 2160 ? "Most detail. The phone runs warmest"
+                : mode.fps > 30 ? "Smoother motion" : "Default. Coolest for the phone")
             modeMenu.addItem(item)
         }
+        modeMenu.addItem(modeLocked)
         for (index, orientation) in PictureOrientation.allCases.enumerated() {
             let item = NSMenuItem(title: orientation.title, action: #selector(selectOrientation(_:)), keyEquivalent: "")
             item.tag = index
+            let (symbols, text): ([String], String) = switch orientation {
+            case .landscape: (["iphone.landscape", "rectangle"], "Phone on its side")
+            case .portrait: (["iphone", "smartphone"], "Phone upright, black bars at the sides")
+            case .auto: (["rectangle.portrait.rotate", "rotate.right"], "Follows the phone as you turn it")
+            }
+            item.image = Self.symbol(symbols)
+            Self.describe(item, text)
             orientationMenu.addItem(item)
         }
         for item in menu.items + modeMenu.items + orientationMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
@@ -390,6 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         frameLock.unlock()
         refreshEnvironment()
         updateSetup()
+        queryReadyStats()
         refreshUI()
         // The menu runs the loop in event tracking mode, so the clock goes in the common modes.
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refreshUI() }
@@ -417,6 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             statusSymbol = symbol
             statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         }
+        showStatusClock()
         statusItem?.button?.toolTip = "\(appName): \(content.status)"
         statusItem?.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
         // Before setup is done there's no phone to show; the menu and Live Controls offer Finish Setup… right there.
@@ -444,16 +472,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         phoneItem.isEnabled = true    // Connect a Phone over Wi-Fi… is always there
         rebuildPhoneMenu()
-        for item in modeMenu.items {
-            item.state = item.tag == (running ? runModeIndex : modeIndex) ? .on : .off
+        let shownMode = running ? runModeIndex : modeIndex
+        for item in modeMenu.items where item.action == #selector(selectMode(_:)) {
+            item.state = item.tag == shownMode ? .on : .off
             item.isEnabled = !running
         }
+        modeLocked.isHidden = !running
         for item in orientationMenu.items {
             item.state = PictureOrientation.allCases[item.tag] == imageStore.orientation ? .on : .off
         }
         cameraItem.isEnabled = live && !switchingLens
         rebuildCameraMenu()
         flashlight.state = torchOn ? .on : .off
+        // Each submenu row says what's picked, so nobody has to open it to find out.
+        let phone = (runDevice ?? devices.first { $0.serial == selectedSerial })?.displayName
+        let lens = live ? runDevice.flatMap { device in lensList(device.serial).first { $0.id == (runLensID ?? "0") } } : nil
+        Self.showValue(phoneItem, "Phone", phone)
+        Self.showValue(modeItem, "Capture Mode", Self.shortTitle(CaptureMode.all[shownMode]))
+        Self.showValue(orientationItem, "Orientation", imageStore.orientation.title)
+        Self.showValue(cameraItem, "Camera", live ? lens.map(Self.lensName) : "When live")
         // The window can start the webcam itself, so it opens whether or not the webcam is live.
         if syncModel.live != live { syncModel.live = live }
         let busy: String? = !running || live ? nil
@@ -465,12 +502,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updateControls(content, veil: veil)
     }
 
+    /// While live, a red camera and the call's clock in the menu bar, ticking with the menu closed too.
+    private func showStatusClock() {
+        guard let item = statusItem, let button = item.button else { return }
+        let since = capture.running && live && !stopRequested ? liveSince : nil
+        if since == nil { statusClock?.invalidate(); statusClock = nil }
+        else if statusClock == nil {
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.showStatusClock() }
+            RunLoop.main.add(timer, forMode: .common)
+            statusClock = timer
+        }
+        let title = since.map { " \(Self.elapsed($0))" } ?? ""
+        guard title != button.title || (since == nil) != (button.contentTintColor == nil) else { return }
+        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        button.title = title
+        button.imagePosition = since == nil ? .imageOnly : .imageLeading
+        button.contentTintColor = since == nil ? nil : .systemRed
+        item.length = since == nil ? NSStatusItem.squareLength : NSStatusItem.variableLength
+    }
+
     /// The first of these SF Symbols this macOS has, for a menu item.
     private static func symbol(_ names: [String]) -> NSImage? {
         for name in names {
             if let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) { return image }
         }
         return nil
+    }
+
+    /// A choice's second line, on macOS 14.4 and later, which draw it natively. Returns whether it's shown.
+    @discardableResult
+    private static func describe(_ item: NSMenuItem, _ text: String) -> Bool {
+        guard #available(macOS 14.4, *) else { return false }
+        item.subtitle = text
+        return true
+    }
+
+    /// Where a row's value ends, from the start of its title: the menu is the header's width.
+    private static let valueTab: CGFloat = 176
+
+    /// A submenu row with what's picked at its right edge, in the secondary color.
+    private static func showValue(_ item: NSMenuItem, _ title: String, _ value: String?) {
+        let text = value.map { "\(title)\t\($0)" } ?? title
+        guard item.attributedTitle?.string != text else { return }
+        let style = NSMutableParagraphStyle()
+        style.tabStops = [NSTextTab(textAlignment: .right, location: valueTab)]
+        let font = NSFont.menuFont(ofSize: 0)
+        let shown = NSMutableAttributedString(string: title, attributes: [.font: font, .paragraphStyle: style])
+        if let value {
+            shown.append(NSAttributedString(string: "\t\(value)", attributes: [
+                .font: font, .paragraphStyle: style, .foregroundColor: NSColor.secondaryLabelColor]))
+        }
+        item.attributedTitle = shown
+    }
+
+    /// "Back · Ultra Wide" under the Back heading reads as "Ultra Wide".
+    private static func lensName(_ lens: CameraLens) -> String {
+        lens.label.components(separatedBy: " · ").last ?? lens.label
+    }
+
+    /// The last line of a submenu whose choices wait for the webcam to stop.
+    private static func lockedNote() -> NSMenuItem {
+        let item = NSMenuItem(title: "Stop the webcam to change this.", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private static func sectionHeader(_ title: String) -> NSMenuItem {
+        if #available(macOS 14, *) { return .sectionHeader(title: title) }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
     }
 
     /// The Live Controls panel shows what the header does, plus the lens list and the flashlight.
@@ -483,7 +584,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         var state = LiveControlsState()
         state.dot = content.dot
         state.status = content.status
-        state.model = content.model
+        state.model = content.phone?.name
         state.stats = content.stats
         state.badge = content.picture?.badge
         state.note = shownLensNote != nil && content.note == shownLensNote ? nil : content.note
@@ -503,21 +604,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         state.torchOn = torchOn
         if controls.model.state != state { controls.model.state = state }
         controls.picture.setVeil(veil)
+        controls.picture.setStill(content.picture?.still)
     }
 
     private func headerContent() -> MenuHeaderView.Content {
         if capture.running, let device = runDevice {
-            let mode = Self.shortTitle(CaptureMode.all[runModeIndex])
             var content = MenuHeaderView.Content(dot: .wait, status: "Starting", picture: nil,
-                                                 model: Self.headerName(device), stats: stats, note: note)
+                                                 phone: headerPhone(device), stats: stats, note: note)
             if stopRequested {
                 content.status = "Stopping"
                 content.picture = .init(veil: .init(title: "Stopping the webcam"))
             } else if live, let since = liveSince {
                 let time = Self.elapsed(since)
                 content.dot = .live
-                content.status = "Live \(time) · \(mode)"
-                content.picture = .init(badge: "LIVE \(time)")
+                content.status = "Live \(time)"
+                content.picture = .init(badge: "LIVE")
                 content.note = note ?? holdNote
             } else if switchingLens {
                 content.status = "Switching camera"
@@ -536,23 +637,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return content
         }
         if setup.steps.isEmpty {
-            return .init(dot: .off, status: "Checking setup", picture: nil, model: nil, stats: nil, note: note)
+            return .init(dot: .off, status: "Checking setup", picture: nil, phone: nil, stats: nil, note: note)
         }
         if let next = setup.nextStep {
             let lines = ["Next: \(next.next)", note].compactMap { $0 }
             return .init(dot: .off, status: "\(setup.doneCount) of \(setup.steps.count) setup steps done", picture: nil,
-                         model: nil, stats: nil, note: lines.joined(separator: "\n"))
+                         phone: headerPhone(nil), stats: nil, note: lines.joined(separator: "\n"))
         }
-        let phone = devices.first { $0.serial == selectedSerial }
+        let device = devices.first { $0.serial == selectedSerial }
         return .init(dot: .ready, status: "Ready",
-                     picture: .init(veil: .init(title: phone.map { "\($0.displayName) is ready" } ?? "Ready",
-                                                text: "Start the webcam to see the picture.")),
-                     model: phone.map(Self.headerName), stats: nil, note: note)
+                     picture: .init(veil: .init(title: device.map { "\($0.displayName) is ready" } ?? "Ready",
+                                                text: "Start the webcam to see the picture."), still: lastStill),
+                     phone: headerPhone(device), stats: device.flatMap { readyStats[$0.serial] }, note: note)
     }
 
-    /// The phone's name under the status, with "Wi-Fi" when it isn't on the cable.
-    private static func headerName(_ device: AndroidDevice) -> String {
-        device.wireless ? "\(device.displayName) · Wi-Fi" : device.displayName
+    /// The header's phone and how it's connected: the given one, else the saved or first listed one, else the saved
+    /// phone's name (or "No phone") as not connected.
+    private func headerPhone(_ device: AndroidDevice?) -> MenuHeaderView.Phone {
+        let saved = Prefs.defaults.string(forKey: Prefs.serial)
+        guard let device = device ?? devices.first(where: { $0.serial == saved }) ?? devices.first else {
+            return .init(name: saved.flatMap { phoneNames[$0] } ?? "No phone", link: nil)
+        }
+        let listed = devices.contains { $0.serial == device.serial }
+        return .init(name: device.displayName, link: listed ? device.wireless ? .wifi : .usb : nil)
     }
 
     /// Only a notice: Landscape is the default for a webcam, and an upright phone may be on purpose.
@@ -576,6 +683,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: check)
     }
 
+    /// Turns the last frame into a small blurred picture for the stopped header, off main, and lets go of the frame.
+    private func keepLastPicture() {
+        frameLock.lock()
+        let frame = newestFrame
+        newestFrame = nil
+        frameLock.unlock()
+        guard let frame else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let image = CIImage(cvPixelBuffer: frame)
+            let scale = 320 / max(image.extent.width, 1)
+            let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let blurred = small.clampedToExtent().applyingGaussianBlur(sigma: 10).cropped(to: small.extent)
+            let still = CIContext(options: [.cacheIntermediates: false]).createCGImage(blurred, from: small.extent)
+            DispatchQueue.main.async {
+                guard let self, let still else { return }
+                self.lastStill = still
+                self.refreshUI()
+            }
+        }
+    }
+
+    /// Reads battery and temperature for the ready phone when the menu opens, at most every 30 s per phone.
+    private func queryReadyStats() {
+        guard !capture.running, let device = devices.first(where: { $0.serial == selectedSerial && $0.authorized }),
+              readyStatsAsked[device.serial].map({ Date().timeIntervalSince($0) >= 30 }) ?? true else { return }
+        readyStatsAsked[device.serial] = Date()
+        let serial = device.serial
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let stats = try? CaptureController.phoneStats(serial: serial) else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.readyStats[serial] = stats
+                self.refreshUI()
+            }
+        }
+    }
+
     private func rebuildPhoneMenu() {
         let key = devices.map { "\($0.serial) \($0.status) \($0.displayName)" }.joined(separator: ",")
             + "|\(selectedSerial ?? "")|\(capture.running)|\(Wireless.enabled)"
@@ -583,23 +727,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         phoneMenuKey = key
         phoneMenu.removeAllItems()
         for (index, device) in devices.enumerated() {
-            let title = device.authorized ? device.displayName : "\(device.displayName) (\(Self.statusAdvice(device.status)))"
-            let item = NSMenuItem(title: title, action: #selector(selectPhone(_:)), keyEquivalent: "")
+            let advice = device.authorized ? nil : Self.statusAdvice(device.status)
+            let link = device.wireless ? "Connected over Wi-Fi" : "Connected over USB"
+            let item = NSMenuItem(title: device.displayName, action: #selector(selectPhone(_:)), keyEquivalent: "")
+            // Older macOS has no second line, so the advice goes in the title there.
+            if !Self.describe(item, advice.map { "\(link). \($0.prefix(1).uppercased())\($0.dropFirst())" } ?? link), let advice {
+                item.title += " (\(advice))"
+            }
             item.target = self
             item.tag = index
             item.state = device.serial == selectedSerial ? .on : .off
             item.isEnabled = device.authorized && !capture.running
-            // Which way it's connected, once both ways are possible.
-            if Wireless.enabled {
-                item.image = Self.symbol(device.wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
-                item.toolTip = device.wireless ? "On Wi-Fi" : "On USB"
-            }
+            item.image = Self.symbol(device.wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
             phoneMenu.addItem(item)
         }
         if devices.isEmpty {
             let item = NSMenuItem(title: Wireless.enabled ? "No phone connected" : "No USB phone connected", action: nil, keyEquivalent: "")
             item.isEnabled = false
             phoneMenu.addItem(item)
+        } else if capture.running {
+            phoneMenu.addItem(Self.lockedNote())
         }
         phoneMenu.addItem(.separator())
         let connect = NSMenuItem(title: "Connect a Phone over Wi-Fi…", action: #selector(showPairing), keyEquivalent: "")
@@ -615,12 +762,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard key != cameraMenuKey else { return }
         cameraMenuKey = key
         cameraMenu.removeAllItems()
-        for (index, lens) in list.enumerated() {
-            let item = NSMenuItem(title: lens.label, action: #selector(selectLens(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            item.state = lens.id == checked ? .on : .off
-            cameraMenu.addItem(item)
+        // Grouped by which side of the phone each lens is on, in the order the phone lists the sides.
+        let facings = list.map(\.facing).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        for facing in facings {
+            cameraMenu.addItem(Self.sectionHeader(facing.prefix(1).uppercased() + facing.dropFirst()))
+            for (index, lens) in list.enumerated() where lens.facing == facing {
+                let item = NSMenuItem(title: Self.lensName(lens), action: #selector(selectLens(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                item.state = lens.id == checked ? .on : .off
+                cameraMenu.addItem(item)
+            }
         }
         if list.isEmpty {
             let item = NSMenuItem(title: "No lens list for this phone", action: nil, keyEquivalent: "")
@@ -1019,6 +1171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let userStopped = stopRequested, quiet = restarting
         runDevice = nil
         if let activity = captureActivity { ProcessInfo.processInfo.endActivity(activity); captureActivity = nil }
+        if let stats { readyStats[device.serial] = stats; readyStatsAsked[device.serial] = Date() }
         live = false; stats = nil; torchOn = false
         // A cool-down restart keeps the call's clock; startCapture(quiet:) picks it up.
         if !quiet { liveSince = nil }
@@ -1033,6 +1186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         header.clearPicture()
         (window?.contentView as? PreviewView)?.clear()
         controls.picture.clear()
+        keepLastPicture()
         if userStopped || quiet {
             // Whoever stopped it knows; what's left in Notification Center is out of date. A restart keeps the cable
             // notice: the phone may be gone, and the restarted run waits for it.
@@ -1474,6 +1628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         frameLock.lock()
         let test = syncTest
         var previewHop = false, headerHop = false, controlsHop = false
+        newestFrame = frame
         if previewOpen {
             previewHop = pendingFrame == nil
             pendingFrame = frame

@@ -194,7 +194,7 @@ final class DevControl {
         guard let match = matches.first, matches.count == 1 else {
             let what = matches.isEmpty ? "No menu item matches" : "More than one menu item matches"
             return fail("\(what) \"\(title)\". Items now: \(visible.joined(separator: " | ")). "
-                + "Header: \"\(headerText().joined(separator: " / "))\". Submenu items are chosen as \"Capture Mode/1080p / 60 fps\".")
+                + "Header: \"\(headerText().joined(separator: " / "))\". Submenu items are chosen as \"Capture Mode/1080p · 60 fps\".")
         }
         let item = match.item
         if item.isHidden { return fail("\"\(match.path)\" is hidden right now.") }
