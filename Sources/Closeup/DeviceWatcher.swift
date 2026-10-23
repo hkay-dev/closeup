@@ -18,7 +18,7 @@ final class DeviceWatcher {
     /// A plain thread, since it spends its life blocked in poll().
     func start() {
         let thread = Thread { [weak self] in self?.follow() }
-        thread.name = "android-webcam.devices"
+        thread.name = "closeup.devices"
         thread.qualityOfService = .utility
         thread.start()
     }

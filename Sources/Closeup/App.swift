@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var relaunching = false
     /// The copy before a relaunch for the OBS extension had Setup open, so this one reopens it once (see relaunchForExtension).
     private var reopenSetup = ProcessInfo.processInfo.environment[AppDelegate.showSetupKey] == "1"
-    private static let showSetupKey = "ANDROID_WEBCAM_SHOW_SETUP"
+    private static let showSetupKey = "CLOSEUP_SHOW_SETUP"
     private var modeIndex = AppDelegate.coolModeIndex
     private let watcher = DeviceWatcher()
     private var devicesKnown = false
@@ -329,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if DevMode.isOn { startDevControl() }
     }
 
-    /// Opens the dev automation socket. Only a launch with ANDROID_WEBCAM_DEV_DIR gets here.
+    /// Opens the dev automation socket. Only a launch with CLOSEUP_DEV_DIR gets here.
     private func startDevControl() {
         let control = DevControl(hooks: DevHooks(
             menu: menu,
@@ -869,7 +869,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// This process's CoreMediaIO list predates the approved extension and never updates (see VirtualCamera.extensionState),
     /// so Start Webcam would fail too: open a fresh copy and quit. Once per lineage, so a device macOS never shows can't loop.
     private func relaunchForExtension() {
-        let key = "ANDROID_WEBCAM_RELAUNCHED"
+        let key = "CLOSEUP_RELAUNCHED"
         // A download or install under way would be cut off by the quit; the 3 s timer comes back here later.
         guard !capture.running, !relaunching, !DevMode.isOn, ProcessInfo.processInfo.environment[key] == nil,
               !setup.platformTools.busy, !setup.obs.busy,
@@ -1795,7 +1795,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 }
 
 @main
-enum AndroidWebcamApp {
+enum CloseupApp {
     static func main() {
         do {
             ADB.prepareEnvironment()

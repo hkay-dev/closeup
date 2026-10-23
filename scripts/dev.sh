@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Off-screen dev instance of Android Webcam for agents and scripts (docs/dev-automation.md).
+# Off-screen dev instance of Closeup for agents and scripts (docs/dev-automation.md).
 # The instance has its own defaults, no status item, windows parked below the desktop, and a control
-# socket that only exists because ANDROID_WEBCAM_DEV_DIR is set. Nothing shows on screen.
+# socket that only exists because CLOSEUP_DEV_DIR is set. Nothing shows on screen.
 #
 #   scripts/dev.sh build                 build the app (scripts/build-app.sh)
 #   scripts/dev.sh start [KEY=VALUE ...] start the instance; prints its directory. KEY=VALUE (KEY:=JSON) seeds its defaults
@@ -21,14 +21,14 @@
 #   scripts/dev.sh ctl OP [k=v ...]      any operation (k:=json for a JSON value)
 #   scripts/dev.sh smoke [DIR]           the whole journey with checks; screenshots go in DIR
 #
-# Commands find the instance through $ANDROID_WEBCAM_DEV_DIR, else the one `start` last printed.
+# Commands find the instance through $CLOSEUP_DEV_DIR, else the one `start` last printed.
 # Take the desktop for anything that screenshots: qm with desktop NAME -- scripts/dev.sh smoke
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-binary="${ANDROID_WEBCAM_APP:-$root/build/Android Webcam.app/Contents/MacOS/AndroidWebcam}"
+binary="${CLOSEUP_APP:-$root/build/Closeup.app/Contents/MacOS/Closeup}"
 # One instance per checkout, so worktrees can each run their own.
-pointer="${XDG_CACHE_HOME:-$HOME/.cache}/android-webcam/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
+pointer="${XDG_CACHE_HOME:-$HOME/.cache}/closeup/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
 
 die() {
     echo "dev.sh: $*" >&2
@@ -41,7 +41,7 @@ usage() {
 }
 
 current_dir() {
-    local dir="${ANDROID_WEBCAM_DEV_DIR:-}"
+    local dir="${CLOSEUP_DEV_DIR:-}"
     [[ -n "$dir" ]] || { [[ -f "$pointer" ]] && dir="$(<"$pointer")"; }
     [[ -n "$dir" && -S "$dir/control.sock" ]] || die "no dev instance running. Run scripts/dev.sh start."
     printf '%s\n' "$dir"
@@ -52,7 +52,7 @@ ctl() {
 }
 
 start() {
-    [[ -x "$binary" ]] || die "no app at $binary. Run scripts/dev.sh build, or set ANDROID_WEBCAM_APP."
+    [[ -x "$binary" ]] || die "no app at $binary. Run scripts/dev.sh build, or set CLOSEUP_APP."
     if [[ -f "$pointer" && -S "$(<"$pointer")/control.sock" ]] && python3 "$root/scripts/dev-ctl.py" "$(<"$pointer")" ping >/dev/null 2>&1; then
         die "a dev instance is already running in $(<"$pointer"). Run scripts/dev.sh stop first."
     fi
@@ -67,7 +67,7 @@ for arg in sys.argv[2:]:
     else: key, value = arg.split("=", 1); seed[key] = value
 json.dump(seed, open(sys.argv[1] + "/seed.json", "w"))' "$dir" "$@"
     fi
-    ANDROID_WEBCAM_DEV_DIR="$dir" nohup "$binary" >"$dir/app.log" 2>&1 &
+    CLOSEUP_DEV_DIR="$dir" nohup "$binary" >"$dir/app.log" 2>&1 &
     echo $! >"$dir/pid"
     disown
     local tries=0

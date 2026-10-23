@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sends one request to the Android Webcam dev instance's control socket and prints the JSON reply.
+"""Sends one request to the Closeup dev instance's control socket and prints the JSON reply.
 
     dev-ctl.py DIR OP [key=value ...]     key=value is a string field, key:=json is a JSON field (key:=true, key:=3)
     dev-ctl.py DIR '{"op": "state"}'      or pass the request as JSON

@@ -519,7 +519,7 @@ index 0000000..120f87a
 +package com.genymobile.scrcpy.video;
 +
 +/**
-+ * Phone image controls added for the Android Webcam app.
++ * Phone image controls added for the Closeup app.
 + * <p>
 + * A field left unset (NaN for the exposure, -1 for the others) keeps the camera default.
 + */

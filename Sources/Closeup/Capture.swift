@@ -298,15 +298,15 @@ private struct SessionRecord: Codable {
 }
 
 final class CaptureController {
-    private static let remotePrefix = "/data/local/tmp/android-webcam-"
+    private static let remotePrefix = "/data/local/tmp/closeup-"
     /// The dev automation instance keeps its own record, so it never cleans up after the real app's session.
     private static let sessionFile = DevMode.directory?.appendingPathComponent("session.json")
         ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.harsha.android-webcam")
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.harsha.closeup")
             .appendingPathComponent("session.json")
 
-    private let worker = DispatchQueue(label: "android-webcam.capture", qos: .userInitiated)
-    private let statsQueue = DispatchQueue(label: "android-webcam.stats")
+    private let worker = DispatchQueue(label: "closeup.capture", qos: .userInitiated)
+    private let statsQueue = DispatchQueue(label: "closeup.stats")
     private let lock = NSLock()
     private var stopping = false
     private var socket: Int32 = -1

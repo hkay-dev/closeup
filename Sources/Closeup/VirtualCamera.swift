@@ -29,7 +29,7 @@ final class VirtualCamera {
         return ids
     }
 
-    private static let lookupLog = Logger(subsystem: "com.harsha.android-webcam", category: "obs-lookup")
+    private static let lookupLog = Logger(subsystem: "com.harsha.closeup", category: "obs-lookup")
     private static let lookups = OSAllocatedUnfairLock(initialState: 0)
 
     /// Logs one line per lookup with a running count, so `log stream --level info` can show how often it runs.

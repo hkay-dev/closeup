@@ -14,10 +14,10 @@ arch_flags=()
 if [[ "${UNIVERSAL:-}" == 1 ]]; then arch_flags=(--arch arm64 --arch x86_64); fi
 swift build -c release ${arch_flags[@]+"${arch_flags[@]}"}
 binary_dir=$(swift build -c release ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
-app='build/Android Webcam.app'
+app='build/Closeup.app'
 rm -rf "$app/Contents/Resources"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$binary_dir/AndroidWebcam" "$app/Contents/MacOS/AndroidWebcam"
+cp "$binary_dir/Closeup" "$app/Contents/MacOS/Closeup"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # CI sets these from the tag and run number, so Settings and Copy Diagnostics tell releases apart.
 if [[ -n "${APP_VERSION:-}" ]]; then

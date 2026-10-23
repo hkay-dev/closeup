@@ -10,11 +10,11 @@ Request: kata:android-webcam#e1f7. This revisits the USB-only call in kata:andro
 
 ## What's true now
 
-- `ADB.parseDevices` (`Sources/AndroidWebcam/Capture.swift:118-125`) drops every line without a `usb:` field, so a phone on wireless debugging never shows up.
+- `ADB.parseDevices` (`Sources/Closeup/Capture.swift:118-125`) drops every line without a `usb:` field, so a phone on wireless debugging never shows up.
 - Video already goes through `adb forward tcp:0 localabstract:scrcpy_<scid>` with `tunnel_forward=true`. Over wireless debugging the same forward runs inside adb's TLS link to the phone, so the frame path on the Mac doesn't change. Only the hop from phone to Mac does.
-- The modes send HEVC at 12, 20 and 40 Mbps (`Sources/AndroidWebcam/Video.swift:46-49`).
+- The modes send HEVC at 12, 20 and 40 Mbps (`Sources/Closeup/Video.swift:46-49`).
 - Check Audio Sync measures when the clap's motion reaches the Mac minus when the mic heard it. Sound reaches the mic almost at once, so this number is close to the camera's full lag up to the virtual camera. It's the ruler for every test below.
-- The virtual camera stamps each frame with the Mac's clock at the moment it's sent (`Sources/AndroidWebcam/Video.swift:259-260`), not the phone's capture time.
+- The virtual camera stamps each frame with the Mac's clock at the moment it's sent (`Sources/Closeup/Video.swift:259-260`), not the phone's capture time.
 
 ## Step 1: let a wireless phone through
 

@@ -1,15 +1,15 @@
 ---
 type: feature
-summary: An off-screen dev instance of Android Webcam that an agent drives from a terminal - read the menu header and items, choose items, read and press controls in Setup, Settings, Live Controls and Check Audio Sync, save window PNGs - with isolated defaults and nothing on Harsha's screen.
+summary: An off-screen dev instance of Closeup that an agent drives from a terminal - read the menu header and items, choose items, read and press controls in Setup, Settings, Live Controls and Check Audio Sync, save window PNGs - with isolated defaults and nothing on Harsha's screen.
 covers:
-  - Sources/AndroidWebcam/DevControl.swift
-  - Sources/AndroidWebcam/DevAccessibility.swift
-  - Sources/AndroidWebcam/App.swift
-  - Sources/AndroidWebcam/Windows.swift
-  - Sources/AndroidWebcam/Hotkey.swift
-  - Sources/AndroidWebcam/Diagnostics.swift
-  - Sources/AndroidWebcam/Installer.swift
-  - Sources/AndroidWebcam/ControlsPanel.swift
+  - Sources/Closeup/DevControl.swift
+  - Sources/Closeup/DevAccessibility.swift
+  - Sources/Closeup/App.swift
+  - Sources/Closeup/Windows.swift
+  - Sources/Closeup/Hotkey.swift
+  - Sources/Closeup/Diagnostics.swift
+  - Sources/Closeup/Installer.swift
+  - Sources/Closeup/ControlsPanel.swift
   - scripts/dev.sh
   - scripts/dev-ctl.py
   - scripts/dev-smoke.sh
@@ -23,23 +23,23 @@ Built for kata:android-webcam#2a6e. Before it, every GUI journey needed one of t
 
 ## The switch
 
-The control path exists only when `ANDROID_WEBCAM_DEV_DIR` names an absolute directory (short, such as `/tmp/awdev.XXXXXX`: the socket path has to fit in 103 bytes). A normal launch has no such variable, so it opens no socket, keeps its status item and windows, and reads its real defaults. `--diagnose` and `--probe-hevc` don't look at it. `scripts/dev.sh start` makes the directory and sets the variable.
+The control path exists only when `CLOSEUP_DEV_DIR` names an absolute directory (short, such as `/tmp/awdev.XXXXXX`: the socket path has to fit in 103 bytes). A normal launch has no such variable, so it opens no socket, keeps its status item and windows, and reads its real defaults. `--diagnose` and `--probe-hevc` don't look at it. `scripts/dev.sh start` makes the directory and sets the variable.
 
 ## What dev mode changes
 
 | Area | Normal launch | Dev instance |
 | --- | --- | --- |
-| Settings | `UserDefaults.standard` (`com.harsha.android-webcam`) | Its own suite, `com.harsha.android-webcam.dev.<dir name>`, emptied at launch and deleted at quit. Every read and write goes through `Prefs.defaults`, including the SwiftUI toggles and the hidden wireless switch (the `ANDROID_WEBCAM_WIRELESS` variable still wins). |
+| Settings | `UserDefaults.standard` (`com.harsha.closeup`) | Its own suite, `com.harsha.closeup.dev.<dir name>`, emptied at launch and deleted at quit. Every read and write goes through `Prefs.defaults`, including the SwiftUI toggles and the hidden wireless switch (the `CLOSEUP_WIRELESS` variable still wins). |
 | Menu bar | A status item | None at all. A hidden status item would still be saved in the real app's defaults, so none is created. The menu is the same `NSMenu`, read and chosen through the socket. |
 | Windows | Brought forward and activated | Parked one level below the desktop (`CGWindowLevelForKey(.desktopWindow) - 1`) with `orderFrontRegardless`. The wallpaper covers them, the app never activates, nothing takes focus. The Live Controls panel loses its floating level the same way. The Preview window and the Live Controls panel skip their saved frames, so no `NSWindow Frame Preview` or `NSWindow Frame LiveControls` lands in the real defaults. |
 | Notifications | macOS banners | Recorded, not posted (`effects`). |
 | Buttons that act outside the app | Open OBS, About platform tools, Get OBS from obsproject.com, Quit OBS, Open Login Items, Open Microphone Settings, the Launch at login switch, Copy Diagnostics | Recorded, not done: no URL opened, no login item registered, no app quit, nothing on the pasteboard. Copy Diagnostics records the whole report as a `pasteboard` effect. |
 | The Live Controls shortcut (⌃⌥⌘L) | Registered with Carbon `RegisterEventHotKey`, so it works from any app with no Accessibility permission | Never registered, since it would fire on the real Mac. Turning the Settings switch on or off records `hotkey` (`register ⌃⌥⌘L`, `unregister ⌃⌥⌘L`), and `ctl hotkey` runs what the press would. The menu's Live Controls… item still shows the key (`"key": "l"`; the modifiers aren't in the reply). |
 | Setup's downloads | Download Platform Tools unzips into `~/Library/Application Support/<app name>/platform-tools`; Download OBS copies OBS.app into `/Applications` | Done for real, into `<dir>/platform-tools` and `<dir>/Applications/OBS.app`, so `stop` deletes them. The Finder window for a read-only `/Applications` is recorded as `open-url`. |
-| A Mac with nothing installed | | `ANDROID_WEBCAM_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
+| A Mac with nothing installed | | `CLOSEUP_DEV_BARE=1` in the environment of `start`: adb is looked for only in `<dir>/platform-tools`, OBS only in `<dir>/Applications`, and OBS's camera counts as off, so Setup shows its first steps on this Mac too. |
 | OBS extension relaunch | `relaunchForExtension` opens a fresh copy and quits | Skipped. |
 | A short screen | Live Controls and Setup cap their height to the screen's visible frame and scroll the controls under Start, or Setup's steps | `start devScreenHeight:=700` makes both act as if the screen had 700 pt of room, to check the scrolling without a small display. |
-| Session record | `~/Library/Application Support/com.harsha.android-webcam/session.json` | `<dir>/session.json`, so the dev instance never cleans up after the real app's phone session. |
+| Session record | `~/Library/Application Support/com.harsha.closeup/session.json` | `<dir>/session.json`, so the dev instance never cleans up after the real app's phone session. |
 
 ## Commands
 
@@ -47,7 +47,7 @@ Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/d
 
 | Command | What it does |
 | --- | --- |
-| `start [KEY=VALUE ...]` | Starts the instance in the background, waits for the first setup check, prints its directory. Later commands find it through `ANDROID_WEBCAM_DEV_DIR` or the directory `start` last printed. `KEY=VALUE` (a string) or `KEY:=JSON` seeds its defaults before launch through `<dir>/seed.json`; arrays and objects are stored as JSON data, as the app saves them. For example `start lensID=1 phoneSerial=emulator-5920 startOnPlugIn:=true 'lenses.emulator-5920:=[{"id":"0","label":"Back · Main","facing":"back"},{"id":"1","label":"Front","facing":"front"}]'`. |
+| `start [KEY=VALUE ...]` | Starts the instance in the background, waits for the first setup check, prints its directory. Later commands find it through `CLOSEUP_DEV_DIR` or the directory `start` last printed. `KEY=VALUE` (a string) or `KEY:=JSON` seeds its defaults before launch through `<dir>/seed.json`; arrays and objects are stored as JSON data, as the app saves them. For example `start lensID=1 phoneSerial=emulator-5920 startOnPlugIn:=true 'lenses.emulator-5920:=[{"id":"0","label":"Back · Main","facing":"back"},{"id":"1","label":"Front","facing":"front"}]'`. |
 | `stop` | Chooses Quit, waits for the process, removes the directory and the dev defaults. |
 | `state` | `header` (the lines the menu header shows, such as `3 of 6 setup steps done` and `Next: plug in your phone with a USB cable.`), `menu`, `windows`, `ready`. |
 | `menu` | Header and menu items: title, enabled, hidden, check state, key, submenus. |
@@ -88,7 +88,7 @@ Start Webcam, the lens, zoom and flashlight items, a hot phone and the error jou
 | `usb emulator-5920` | the emulator passes the app's USB filter, without the wireless switch |
 | `hide emulator-5920` (with `adb shell pkill -f com.genymobile.scrcpy` to end the stream) | a pulled cable; removing the line plugs it back in |
 | `device R5CY11B8DHD unauthorized usb:2-1` | a second phone, one that hasn't allowed debugging, or `offline` |
-| `device adb-emulator-5920-Xy12Ab._adb-tls-connect._tcp device ...` plus `alias` to the emulator | one phone on USB and wireless (with `ANDROID_WEBCAM_WIRELESS=1`) |
+| `device adb-emulator-5920-Xy12Ab._adb-tls-connect._tcp device ...` plus `alias` to the emulator | one phone on USB and wireless (with `CLOSEUP_WIRELESS=1`) |
 | `server-error Camera error CAMERA_IN_USE (4): ...` | another app holding the camera, at start or on a reconnect |
 | `hang forward tcp:0`, `delay 8 scid=` | a hung adb at Start, Stop and Quit; a slow server start |
 | `track-exit` | adb not working |
@@ -97,11 +97,11 @@ The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated)
 
 ## README screenshots
 
-The PNGs in `docs/assets/` (`setup.png`, `setup-done.png`, `live-controls.png`, `settings.png`, `audio-sync.png`) are `shot`s of the dev instance, retaken on 2026-10-22. One thing keeps them free of this Mac's details:
+The PNGs in `docs/assets/` (`setup.png`, `setup-done.png`, `live-controls.png`, `settings.png`, `audio-sync.png`) are `shot`s of the dev instance, retaken on 2026-10-22; `settings.png` was retaken on 2026-10-23 for the new name, and `setup.png` is a window crop from a macOS VM on a fresh install. One thing keeps them free of this Mac's details:
 
 - A phone name. The emulator lists as `Android SDK built for arm64`. Leave out its `usb` rule and list it under a made-up name instead: `device 3A281FDJH00XYZ device usb:1-1 product:shiba model:Pixel_8 device:shiba` and `alias 3A281FDJH00XYZ emulator-5920`, with `lenses.3A281FDJH00XYZ` seeded. Hide any other phone adb lists (`hide SERIAL`).
 
-The emulator's camera shows a blocky test picture, so Live Controls is shot in the Ready state. Check Audio Sync is shot while live (no Start Webcam row) after `ctl sync-phase phase=result lagMs:=118`. Setup mid-way is a separate `ANDROID_WEBCAM_DEV_BARE=1` instance.
+The emulator's camera shows a blocky test picture, so Live Controls is shot in the Ready state. Check Audio Sync is shot while live (no Start Webcam row) after `ctl sync-phase phase=result lagMs:=118`. Setup mid-way is a separate `CLOSEUP_DEV_BARE=1` instance.
 
 ## Limits
 

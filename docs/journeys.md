@@ -1,6 +1,6 @@
 ---
 type: reference
-summary: The user journeys of Android Webcam (core, regular, rare), each with who and where, steps and what it touches, plus where features share state or a moment. The map a bug bash walks.
+summary: The user journeys of Closeup (core, regular, rare), each with who and where, steps and what it touches, plus where features share state or a moment. The map a bug bash walks.
 ---
 
 # Journeys
@@ -30,7 +30,7 @@ Touches: capture teardown, adb forward and pushed jar, notifications, App Nap ac
 ## Reopen the app and carry on (core)
 Who and where: Harsha on the Mac, next day, phone plugged in again, app not running (or running with its icon out of reach).
 Steps:
-1. Open Android Webcam from Finder, Spotlight or Raycast. The icon appears; setup does not reopen when it was done.
+1. Open Closeup from Finder, Spotlight or Raycast. The icon appears; setup does not reopen when it was done.
 2. The saved phone and mode are selected. The menu says "Ready" and Start Webcam works without touching Setup.
 3. Open it again while it runs: the menu opens, or Settings when the icon is unreachable.
 Touches: UserDefaults (saved serial, mode, lens, setupShown), the device watcher, applicationShouldHandleReopen, OBS lookup.
@@ -149,8 +149,8 @@ Touches: the session record, adb forward and shell child, shared ADB server.
 ## Phone over Wi-Fi (regular for Harsha)
 Who and where: Harsha at his desk with the phone on wireless debugging, no cable.
 Steps:
-1. Settings › Phone › Phones over Wi-Fi on (or `ANDROID_WEBCAM_WIRELESS=1`, which wins). The phone list follows at once: the track-devices stream restarts, and phones this Mac has paired connect by themselves when they show on the network (Bonjour `_adb-tls-connect._tcp`, then `adb connect`, since an adb server started with the switch off has its own mDNS off).
-2. Phone › Connect a Phone over Wi-Fi… turns the switch on and opens a window with a QR code (`WIFI:T:ADB;S:AndroidWebcam-…;P:…;;`). The phone's Wireless debugging › Pair device with QR code scans it, the app finds that name under `_adb-tls-pairing._tcp` and runs `adb pair`; or the phone's six-digit pairing code goes in the window's field. The window says when the phone is connected.
+1. Settings › Phone › Phones over Wi-Fi on (or `CLOSEUP_WIRELESS=1`, which wins). The phone list follows at once: the track-devices stream restarts, and phones this Mac has paired connect by themselves when they show on the network (Bonjour `_adb-tls-connect._tcp`, then `adb connect`, since an adb server started with the switch off has its own mDNS off).
+2. Phone › Connect a Phone over Wi-Fi… turns the switch on and opens a window with a QR code (`WIFI:T:ADB;S:Closeup-…;P:…;;`). The phone's Wireless debugging › Pair device with QR code scans it, the app finds that name under `_adb-tls-pairing._tcp` and runs `adb pair`; or the phone's six-digit pairing code goes in the window's field. The window says when the phone is connected.
 3. The Phone menu marks each phone with a Wi-Fi or cable symbol, the header reads "Polaris · Wi-Fi", and capture logs a line per second to the `wireless-latency` category.
 4. Off: wireless entries are hidden and the menu says "No USB phone connected".
 Touches: Wireless.swift (switch, BonjourBrowser, WirelessConnector, WirelessPairing), PairingView, DeviceWatcher.refresh, Settings, `--diagnose` wireless fields, Info.plist local network keys.
@@ -158,7 +158,7 @@ Touches: Wireless.swift (switch, BonjourBrowser, WirelessConnector, WirelessPair
 ## Headless diagnose and probe (rare)
 Who and where: Harsha or an agent in a shell.
 Steps:
-1. `AndroidWebcam --diagnose` prints JSON with usb_devices, bundled server, adb path, OBS extension state, HEVC support, wireless fields; it starts no camera or preview.
+1. `Closeup --diagnose` prints JSON with usb_devices, bundled server, adb path, OBS extension state, HEVC support, wireless fields; it starts no camera or preview.
 2. `--probe-hevc <file>` decodes a sample; bad arguments exit 1. The sample is Annex B HEVC with access-unit delimiters (`ffmpeg -f lavfi -i testsrc=size=1280x720:rate=30 -t 2 -c:v libx265 -x265-params aud=1 -pix_fmt yuv420p -f hevc sample.h265`). Two samples joined end to end at different sizes decode as one stream and report the last size. A sample without delimiters, without parameter sets or cut off exits 1 with one plain sentence.
 3. `--diagnose` lists every wireless phone adb knows under `wireless_devices` whether or not the switch is on (`adb connect 127.0.0.1:<emulator adb port>` makes one without a phone). An emulator never appears under `usb_devices`: its adb line has no `usb:` field, so the both-transports dedupe needs a real phone.
 Touches: ADB, VirtualCamera lookup, VideoToolbox.
@@ -184,8 +184,8 @@ Touches: ADB, VirtualCamera lookup, VideoToolbox.
 ## Driving notes (no phone)
 
 - The GUI needs a throwaway macOS VM (the app is a menu bar item, and `--diagnose` and `--probe-hevc` are the only headless entries). A clone needs OBS.app to get the camera extension. `macvm install-app "$vm" /Applications/OBS.app` from the Mac works (about 1 minute), then OBS's Start Virtual Camera raises "would like to use a new camera extension", Open System Settings, the toggle, the account password, Done. Doing that in every clone takes about 8 minutes of a 20 minute hold; use the base below instead.
-- **The OBS base:** `macOS 27 Android Webcam Base` is `macOS 27 Base` plus OBS Studio 32.2.2 in /Applications with its camera extension approved (`systemextensionsctl list` shows `com.obsproject.obs-studio.mac-camera-extension` as `[activated enabled]`), OBS's permission screen continued without granting anything, OBS's update check answered Don't Check, and OBS quit. It has no Android Webcam app, no adb, no account and no credential. Its snapshot is `OBS 32.2.2 with camera extension approved`. Clone it with `macvm up <owner> --base "macOS 27 Android Webcam Base"` (or `MACVM_BASE`), then `macvm install-app` the build and `vmpal cp` the Mac's adb to `Library/Android/sdk/platform-tools/adb` (where the app looks first in the VM; `chmod +x` it). `--diagnose` in such a clone reports `obs_camera_installed: true`; without adb it exits 1 on the install line before printing. Going Live in a clone from it needs an emulator and was not re-proved here. Never test in the base itself. The first-run Setup journey still needs the plain `macOS 27 Base`, where the extension is not approved.
-- On this Mac (no VM): the off-screen dev instance with the AVD `Webcam_A` on port 5920 and `ADB=scripts/fault-adb` drives every journey except real banners, Mac sleep and a microphone (docs/dev-automation.md). Its camera ids are 0 (Back, no 1080p) and 1 (Front); seed `lensID=1` and the lens list at `start`. In the VM the older stand-in was an Android 36 emulator whose camera ids are 1 (front) and 10 (back), so `defaults write com.harsha.android-webcam lensID -string 1` there. The VM reaches it through a `socat` relay on the bridge address into the emulator's adb port, then `adb connect` in the VM, with the wireless switch on.
+- **The OBS base:** `macOS 27 Closeup Base` is `macOS 27 Base` plus OBS Studio 32.2.2 in /Applications with its camera extension approved (`systemextensionsctl list` shows `com.obsproject.obs-studio.mac-camera-extension` as `[activated enabled]`), OBS's permission screen continued without granting anything, OBS's update check answered Don't Check, and OBS quit. It has no Closeup app, no adb, no account and no credential. Its snapshot is `OBS 32.2.2 with camera extension approved`. Clone it with `macvm up <owner> --base "macOS 27 Closeup Base"` (or `MACVM_BASE`), then `macvm install-app` the build and `vmpal cp` the Mac's adb to `Library/Android/sdk/platform-tools/adb` (where the app looks first in the VM; `chmod +x` it). `--diagnose` in such a clone reports `obs_camera_installed: true`; without adb it exits 1 on the install line before printing. Going Live in a clone from it needs an emulator and was not re-proved here. Never test in the base itself. The first-run Setup journey still needs the plain `macOS 27 Base`, where the extension is not approved.
+- On this Mac (no VM): the off-screen dev instance with the AVD `Webcam_A` on port 5920 and `ADB=scripts/fault-adb` drives every journey except real banners, Mac sleep and a microphone (docs/dev-automation.md). Its camera ids are 0 (Back, no 1080p) and 1 (Front); seed `lensID=1` and the lens list at `start`. In the VM the older stand-in was an Android 36 emulator whose camera ids are 1 (front) and 10 (back), so `defaults write com.harsha.closeup lensID -string 1` there. The VM reaches it through a `socat` relay on the bridge address into the emulator's adb port, then `adb connect` in the VM, with the wireless switch on.
 - With the Mac's load near 70 to 100 the emulator's camera can fail most frames. At step 3 (load about 90) a 1080p stream still ran for minutes and the Live clock kept counting.
 - A microphone needs `macvm vmpal set <vm> --microphone on`, which records the Mac's real microphone and needs Harsha's say-so. Without it Check Audio Sync stays on "No microphone found".
 - Heat works: `adb shell dumpsys battery set temp 450` (tenths of a degree) shows "113°F" in the header within 10 seconds. In 1080p / 30 (the cool mode) there is no switch item, only a notification; in 1080p / 60 the menu shows "Switch to 1080p • 30 to cool down" and choosing it restarts quietly at 1080p • 30 with the item gone. `dumpsys battery reset` puts it back.

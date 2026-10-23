@@ -21,6 +21,25 @@ enum Prefs {
 
     static func register() {
         defaults.register(defaults: [startOnPlugIn: false, notifications: true, macSharpness: 0.0, liveControlsShortcut: true])
+        carryOverOldName()
+    }
+
+    /// The app used to be Android Webcam (com.harsha.android-webcam). The first launch under the new name copies its
+    /// settings and moves its downloaded tools and session record, so nothing has to be set up again.
+    private static func carryOverOldName() {
+        let oldID = "com.harsha.android-webcam", done = "carriedOverOldName"
+        guard !DevMode.isOn, let newID = Bundle.main.bundleIdentifier, newID != oldID, !defaults.bool(forKey: done) else { return }
+        defaults.set(true, forKey: done)
+        let mine = defaults.persistentDomain(forName: newID) ?? [:]
+        for (key, value) in defaults.persistentDomain(forName: oldID) ?? [:] where mine[key] == nil {
+            defaults.set(value, forKey: key)
+        }
+        let files = FileManager.default
+        let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        for (old, new) in [("Android Webcam", appName), (oldID, newID)] {
+            let from = support.appendingPathComponent(old, isDirectory: true), to = support.appendingPathComponent(new, isDirectory: true)
+            if files.fileExists(atPath: from.path), !files.fileExists(atPath: to.path) { try? files.moveItem(at: from, to: to) }
+        }
     }
 }
 

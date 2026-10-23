@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # Packs the built app into a compressed, read-only disk image with an Applications link,
 # so a user drags the app across. No Finder styling: that needs a GUI session and breaks in CI.
-# Usage: scripts/make-dmg.sh [APP] [OUT]   (defaults: build/Android Webcam.app, build/Android-Webcam.dmg)
+# Usage: scripts/make-dmg.sh [APP] [OUT]   (defaults: build/Closeup.app, build/Closeup.dmg)
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-app=${1:-$root/build/Android Webcam.app}
-out=${2:-$root/build/Android-Webcam.dmg}
-volume='Android Webcam'
+app=${1:-$root/build/Closeup.app}
+out=${2:-$root/build/Closeup.dmg}
+volume='Closeup'
 
 fail() { printf 'make-dmg: %s\n' "$*" >&2; exit 1; }
 
 [[ -d "$app" ]] || fail "no app at $app (run scripts/build-app.sh first)"
-[[ -x "$app/Contents/MacOS/AndroidWebcam" ]] || fail "$app has no Contents/MacOS/AndroidWebcam"
+[[ -x "$app/Contents/MacOS/Closeup" ]] || fail "$app has no Contents/MacOS/Closeup"
 codesign --verify --strict "$app" || fail "$app isn't signed (scripts/build-app.sh signs it)"
 mkdir -p "$(dirname "$out")" || fail "can't make the folder for $out"
 out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
 
-staging=$(mktemp -d "${TMPDIR:-/tmp}/android-webcam-dmg.XXXXXX")
+staging=$(mktemp -d "${TMPDIR:-/tmp}/closeup-dmg.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 
 # ditto keeps the bundle's permissions, extended attributes and signature.

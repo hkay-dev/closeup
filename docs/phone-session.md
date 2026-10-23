@@ -13,9 +13,9 @@ About 90 minutes without the optional parts at the end. The order keeps the phon
 
 1. The agent takes the phone lease: `~/.agents/skills/android-dev/scripts/devlease take phone <you> --ttl 180`.
 2. Plug in the S25 Ultra over USB-C and unlock it. `adb devices -l` lists it with a `usb:` field.
-3. Quit any running Android Webcam. Build once: `scripts/build-app.sh`.
-4. `'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' --diagnose` shows the phone under `usb_devices` and `obs_camera_installed: true`.
-5. Start the app from a terminal so its log is kept: `'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' 2>&1 | tee /tmp/aw-phone.log`. Settings > Notifications on.
+3. Quit any running Closeup. Build once: `scripts/build-app.sh`.
+4. `'build/Closeup.app/Contents/MacOS/Closeup' --diagnose` shows the phone under `usb_devices` and `obs_camera_installed: true`.
+5. Start the app from a terminal so its log is kept: `'build/Closeup.app/Contents/MacOS/Closeup' 2>&1 | tee /tmp/aw-phone.log`. Settings > Notifications on.
 6. In a second terminal, keep the phone's temperature in view: `watch -n 10 "adb shell dumpsys battery | grep temperature"`.
 
 ## 1. Start and the receiving apps (15 min)
@@ -79,14 +79,14 @@ Check Audio Sync, Start, one clap in the middle of the picture, three times. The
 
 ## 7. Sleep and wake (5 min)
 
-With the webcam live: `pmset -g assertions` shows no sleep-preventing assertion from Android Webcam (f8bs). Apple menu > Sleep, wait 30 s, wake. The picture comes back within about 20 s with no "Phone disconnected" banner (9vqz).
+With the webcam live: `pmset -g assertions` shows no sleep-preventing assertion from Closeup (f8bs). Apple menu > Sleep, wait 30 s, wake. The picture comes back within about 20 s with no "Phone disconnected" banner (9vqz).
 
 ## 8. Quit and cleanup (5 min)
 
 | Step | Look for | Refs |
 | --- | --- | --- |
-| Quit while live | It exits; Notification Center has no Android Webcam banners left | 5xnx |
-| `adb forward --list` and `adb shell ls /data/local/tmp` | Nothing from the app (`scrcpy_`, `android-webcam-`) | w6fh |
+| Quit while live | It exits; Notification Center has no Closeup banners left | 5xnx |
+| `adb forward --list` and `adb shell ls /data/local/tmp` | Nothing from the app (`scrcpy_`, `closeup-`) | w6fh |
 | Rebuild with `scripts/build-app.sh`, open the app, Start | Live with no new camera or OBS prompt | hbt7 |
 | Start, then `kill -9` the app, then open it again | The next launch removes the old forward | w6fh |
 

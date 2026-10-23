@@ -3,11 +3,11 @@ import Foundation
 import os
 
 /// Phones on wireless debugging (kata:android-webcam#b60q), off by default so the app stays USB only. Settings'
-/// "Phones over Wi-Fi" switch sets `wirelessAdb` and takes effect at once; `ANDROID_WEBCAM_WIRELESS=1` (or `0`) in
+/// "Phones over Wi-Fi" switch sets `wirelessAdb` and takes effect at once; `CLOSEUP_WIRELESS=1` (or `0`) in
 /// the environment wins over it, for dev runs.
 enum Wireless {
     static let defaultsKey = "wirelessAdb"
-    static let environmentKey = "ANDROID_WEBCAM_WIRELESS"
+    static let environmentKey = "CLOSEUP_WIRELESS"
 
     static var enabled: Bool {
         if let value = ProcessInfo.processInfo.environment[environmentKey] {
@@ -160,7 +160,7 @@ final class WirelessPairing: ObservableObject {
     /// Runs on main once adb has paired, so the app looks for the phone at once.
     var onPaired: () -> Void = {}
 
-    private static let prefix = "AndroidWebcam-"
+    private static let prefix = "Closeup-"
     private let browser = BonjourBrowser(type: "_adb-tls-pairing._tcp")
     private var serviceName = ""
     private var password = ""
@@ -276,15 +276,15 @@ final class WirelessPairing: ObservableObject {
 /// One log line per second while capturing, for the wireless latency session. Frames and bytes received, the
 /// longest gap between packets, and how far arrival has drifted behind the phone's clock.
 ///
-/// Watch it with `log stream --level info --predicate 'subsystem == "com.harsha.android-webcam" AND category == "wireless-latency"'`.
+/// Watch it with `log stream --level info --predicate 'subsystem == "com.harsha.closeup" AND category == "wireless-latency"'`.
 ///
 /// The phone and Mac clocks differ, so `behind_ms` is arrival minus pts measured from the least delayed packet
 /// seen since capture started. It sits near 0 on a link that keeps up and grows while frames queue. The two
 /// clocks also drift a few ms in five minutes, so read the trend, not a single digit.
 final class PacketLog {
-    private static let log = Logger(subsystem: "com.harsha.android-webcam", category: "wireless-latency")
+    private static let log = Logger(subsystem: "com.harsha.closeup", category: "wireless-latency")
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "android-webcam.packet-log", qos: .utility)
+    private let queue = DispatchQueue(label: "closeup.packet-log", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var frames = 0, bytes = 0
     private var longestGap: UInt64 = 0

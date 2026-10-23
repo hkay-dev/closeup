@@ -2,10 +2,10 @@
 type: reference
 summary: How to run the wireless ADB latency session - the Phones over Wi-Fi switch, the per-second capture log, and the USB-vs-wireless measurement matrix with the 50 ms and 200 ms bar.
 covers:
-  - Sources/AndroidWebcam/Wireless.swift
-  - Sources/AndroidWebcam/Capture.swift
-  - Sources/AndroidWebcam/DeviceWatcher.swift
-  - Sources/AndroidWebcam/App.swift
+  - Sources/Closeup/Wireless.swift
+  - Sources/Closeup/Capture.swift
+  - Sources/Closeup/DeviceWatcher.swift
+  - Sources/Closeup/App.swift
 ---
 
 # Wireless latency session
@@ -17,14 +17,14 @@ The measurement for kata:android-webcam#e1f7, revisiting the USB-only call in ka
 The app is USB only unless the wireless switch is on: Settings › Phone › **Phones over Wi-Fi**, which takes effect at once (kata:android-webcam#b60q). **Connect a Phone over Wi-Fi…** in the Phone menu turns it on and pairs a phone with a QR code. The switch is the `wirelessAdb` default:
 
 ```sh
-defaults write com.harsha.android-webcam wirelessAdb -bool true     # on, for every launch
-defaults delete com.harsha.android-webcam wirelessAdb               # off again (USB only)
+defaults write com.harsha.closeup wirelessAdb -bool true     # on, for every launch
+defaults delete com.harsha.closeup wirelessAdb               # off again (USB only)
 ```
 
 Or for one launch from a shell, which wins over the setting (`0` turns it off):
 
 ```sh
-ANDROID_WEBCAM_WIRELESS=1 'build/Android Webcam.app/Contents/MacOS/AndroidWebcam'
+CLOSEUP_WIRELESS=1 'build/Closeup.app/Contents/MacOS/Closeup'
 ```
 
 With the switch on:
@@ -36,7 +36,7 @@ With the switch on:
 `--diagnose` prints `wireless_switch` and `wireless_devices` (every wireless phone adb lists, used or not). A phone on both transports appears only under `wireless_devices` while the switch is on.
 
 ```sh
-ANDROID_WEBCAM_WIRELESS=1 'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' --diagnose
+CLOSEUP_WIRELESS=1 'build/Closeup.app/Contents/MacOS/Closeup' --diagnose
 ```
 
 ## Connect the phone over wireless debugging
@@ -52,7 +52,7 @@ For the USB baseline, turn Wireless debugging off on the phone (the cable alone 
 ## The capture log
 
 ```sh
-log stream --level info --predicate 'subsystem == "com.harsha.android-webcam" AND category == "wireless-latency"' | tee wireless-<mode>-<usb|wifi>.log
+log stream --level info --predicate 'subsystem == "com.harsha.closeup" AND category == "wireless-latency"' | tee wireless-<mode>-<usb|wifi>.log
 ```
 
 Each capture start writes `capture started <serial> <wireless|usb> <mode>`, which also marks a reconnect. Then one line a second:

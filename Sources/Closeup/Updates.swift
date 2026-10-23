@@ -2,8 +2,8 @@ import Foundation
 
 /// Settings' Check for Updates: asks GitHub for the newest release, only when the button is pressed.
 enum Updates {
-    static let releasesPage = URL(string: "https://github.com/hkay-dev/android-webcam/releases")!
-    private static let latestAPI = URL(string: "https://api.github.com/repos/hkay-dev/android-webcam/releases/latest")!
+    static let releasesPage = URL(string: "https://github.com/hkay-dev/closeup/releases")!
+    private static let latestAPI = URL(string: "https://api.github.com/repos/hkay-dev/closeup/releases/latest")!
 
     enum Result: Equatable {
         case upToDate

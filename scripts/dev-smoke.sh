@@ -14,7 +14,7 @@ dev="$root/scripts/dev.sh"
 out="${1:-$(mktemp -d /tmp/awdev-smoke.XXXXXX)}"
 mkdir -p "$out"
 failures=0
-domain=com.harsha.android-webcam
+domain=com.harsha.closeup
 
 say() { printf '%s\n' "$*"; }
 check() {
@@ -117,7 +117,7 @@ quit="$("$dev" choose Quit)"
 ok_if "Quit was accepted" jq -e '.quitting == true' <<<"$quit"
 for _ in $(seq 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
 if kill -0 "$pid" 2>/dev/null; then check bad "the app quit"; else check ok "the app quit"; fi
-rm -rf "$dir" "${XDG_CACHE_HOME:-$HOME/.cache}/android-webcam/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
+rm -rf "$dir" "${XDG_CACHE_HOME:-$HOME/.cache}/closeup/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
 trap - EXIT
 
 say "files in $out"

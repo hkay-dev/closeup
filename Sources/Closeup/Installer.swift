@@ -74,9 +74,9 @@ final class Installer: NSObject, ObservableObject, URLSessionDownloadDelegate {
     /// Google's Apple Developer team, as `codesign -dv` reads it on the SDK's adb.
     static let googleTeamID = "EQHXZ8M8AV"
 
-    /// A dev instance started with ANDROID_WEBCAM_DEV_BARE=1 acts like a Mac with nothing installed: only the adb and
+    /// A dev instance started with CLOSEUP_DEV_BARE=1 acts like a Mac with nothing installed: only the adb and
     /// OBS it downloaded into its own directory count, and OBS's camera counts as off.
-    static let bareMac = DevMode.isOn && ProcessInfo.processInfo.environment["ANDROID_WEBCAM_DEV_BARE"] == "1"
+    static let bareMac = DevMode.isOn && ProcessInfo.processInfo.environment["CLOSEUP_DEV_BARE"] == "1"
 
     /// `~/Library/Application Support/<app name>`, or the dev instance's directory.
     static var supportDirectory: URL {

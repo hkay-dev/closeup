@@ -1,12 +1,12 @@
 import AppKit
 import Foundation
 
-/// Off-screen dev automation (kata:android-webcam#2a6e). It exists only when `ANDROID_WEBCAM_DEV_DIR` names a
+/// Off-screen dev automation (kata:android-webcam#2a6e). It exists only when `CLOSEUP_DEV_DIR` names a
 /// directory. A normal launch has no such variable, so it opens no socket and changes nothing. In dev mode the app
 /// keeps its own defaults suite, hides its status item, parks windows below the desktop and answers one JSON
 /// request per connection on `<dir>/control.sock`. docs/dev-automation.md lists the operations.
 enum DevMode {
-    static let environmentKey = "ANDROID_WEBCAM_DEV_DIR"
+    static let environmentKey = "CLOSEUP_DEV_DIR"
 
     static let directory: URL? = {
         guard let path = ProcessInfo.processInfo.environment[environmentKey], path.hasPrefix("/") else { return nil }
@@ -17,7 +17,7 @@ enum DevMode {
     /// The dev instance's own defaults, so it never reads or writes the real app's settings. Cleared on every launch,
     /// then filled from `<dir>/seed.json` when `dev.sh start key=value` wrote one (a lens, a finished Setup). Arrays
     /// and objects are stored as JSON data, the way the app saves its lens lists and image settings.
-    static let suiteName = "com.harsha.android-webcam.dev." + (directory?.lastPathComponent ?? "none")
+    static let suiteName = "com.harsha.closeup.dev." + (directory?.lastPathComponent ?? "none")
     static let defaults: UserDefaults? = {
         guard isOn, let suite = UserDefaults(suiteName: suiteName) else { return nil }
         suite.removePersistentDomain(forName: suiteName)

@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "AndroidWebcam",
+    name: "Closeup",
     platforms: [.macOS(.v13)],
-    products: [.executable(name: "AndroidWebcam", targets: ["AndroidWebcam"])],
+    products: [.executable(name: "Closeup", targets: ["Closeup"])],
     targets: [.executableTarget(
-        name: "AndroidWebcam",
+        name: "Closeup",
         linkerSettings: [
             .linkedFramework("AppKit"), .linkedFramework("AVFoundation"),
             .linkedFramework("CoreMedia"), .linkedFramework("CoreMediaIO"),

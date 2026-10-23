@@ -2,7 +2,7 @@
 type: plan
 summary: Make first-run Setup do the Mac's part by itself (platform tools, OBS, OBS's camera) and turn the phone half into a wizard that follows the USB connection and shows the Developer options taps.
 status: in-progress
-covers: [Sources/AndroidWebcam/OBSSetup.swift, Sources/AndroidWebcam/USBPhones.swift, Sources/AndroidWebcam/PhoneGuide.swift, Sources/AndroidWebcam/Windows.swift, Sources/AndroidWebcam/App.swift]
+covers: [Sources/Closeup/OBSSetup.swift, Sources/Closeup/USBPhones.swift, Sources/Closeup/PhoneGuide.swift, Sources/Closeup/Windows.swift, Sources/Closeup/App.swift]
 ---
 
 # Setup wizard
