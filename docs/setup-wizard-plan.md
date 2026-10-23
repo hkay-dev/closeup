@@ -20,7 +20,6 @@ Request: kata:android-webcam#79fh. Harsha asked that a new user only touch what 
 - The phone step reads IOKit's USB list next to adb, so it can tell nothing plugged in from a phone with debugging off, and adb's unauthorized state from ready.
 - Each state has a drawn phone acting out the taps: the cable, Build number tapped 7 times with the toasts and the PIN pad, the Developer options switch, the "Allow USB debugging?" box. The maker, from the USB vendor ID, picks the menu path.
 
-## Left to check
 ## Checked
 
 - Two new-user walks in clones of the plain macOS 27 base (`vm-evidence-79fh/walk-NOTES.txt`). The first found OBS restarted in a loop after approval, since the old copy saw the camera as off until it reopened; the second, after the fix, had OBS start once, no OBS window or dialog, the relaunch waiting for System Settings to close, and Setup ending at 4 of 5 with only the phone left.
