@@ -146,13 +146,14 @@ Steps:
 2. Launch the app again. It removes what the earlier session recorded, and only that, and never stops the ADB server.
 Touches: the session record, adb forward and shell child, shared ADB server.
 
-## Wireless debugging session (rare)
-Who and where: Harsha at the latency session, with the hidden switch on.
+## Phone over Wi-Fi (regular for Harsha)
+Who and where: Harsha at his desk with the phone on wireless debugging, no cable.
 Steps:
-1. `defaults write com.harsha.android-webcam wirelessAdb -bool true` (or `ANDROID_WEBCAM_WIRELESS=1`), launch.
-2. The phone on wireless debugging appears in the Phone menu; capture logs a line per second to the `wireless-latency` category.
-3. Off by default: with the switch off, wireless entries are hidden and the menu says "No USB phone connected".
-Touches: Wireless.swift, DeviceWatcher parsing, `--diagnose` wireless fields.
+1. Settings › Phone › Phones over Wi-Fi on (or `ANDROID_WEBCAM_WIRELESS=1`, which wins). The phone list follows at once: the track-devices stream restarts, and phones this Mac has paired connect by themselves when they show on the network (Bonjour `_adb-tls-connect._tcp`, then `adb connect`, since an adb server started with the switch off has its own mDNS off).
+2. Phone › Connect a Phone over Wi-Fi… turns the switch on and opens a window with a QR code (`WIFI:T:ADB;S:AndroidWebcam-…;P:…;;`). The phone's Wireless debugging › Pair device with QR code scans it, the app finds that name under `_adb-tls-pairing._tcp` and runs `adb pair`; or the phone's six-digit pairing code goes in the window's field. The window says when the phone is connected.
+3. The Phone menu marks each phone with a Wi-Fi or cable symbol, the header reads "Polaris · Wi-Fi", and capture logs a line per second to the `wireless-latency` category.
+4. Off: wireless entries are hidden and the menu says "No USB phone connected".
+Touches: Wireless.swift (switch, BonjourBrowser, WirelessConnector, WirelessPairing), PairingView, DeviceWatcher.refresh, Settings, `--diagnose` wireless fields, Info.plist local network keys.
 
 ## Headless diagnose and probe (rare)
 Who and where: Harsha or an agent in a shell.

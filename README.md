@@ -1,6 +1,6 @@
 # Android Webcam
 
-Use your Android phone's camera as your Mac's webcam, over a USB cable. There's no app to install on the phone, no account and no cloud: the Mac talks to the phone's camera directly and hands the picture to any call or recording app.
+Use your Android phone's camera as your Mac's webcam, over a USB cable or Wi-Fi. There's no app to install on the phone, no account and no cloud: the Mac talks to the phone's camera directly and hands the picture to any call or recording app.
 
 <p align="center">
   <img src="docs/assets/live-controls.png" width="320" alt="Live Controls: lens chips, zoom, flashlight, exposure, white balance, focus and sharpening">
@@ -55,7 +55,8 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 - **Live Controls** (⌃⌥⌘L from any app) opens a small floating panel that stays above your call and never takes its keyboard, so mute and push-to-talk keep working: switch lenses, zoom (hold to keep zooming), turn on the flashlight, pick the orientation, and set exposure, white balance, focus and sharpening while you're live. When the webcam is off it has a Start Webcam button. Settings stay for the next call.
 - **Show Preview** opens a picture-only window, separate from what call apps see.
 - **Check Audio Sync** times a clap to measure how far the video lags the sound, so you can set an audio delay in your call or recording app.
-- **Settings** has Launch at login, Start when the phone is plugged in, notifications and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, **Run Setup Again**, and **Check for Updates**, which asks GitHub for the newest release and links to it.
+- **Phone › Connect a Phone over Wi-Fi…** pairs the phone once with a QR code: on the phone, open **Developer options › Wireless debugging**, tap **Pair device with QR code** and point it at the window (or type the phone's six-digit pairing code). After that the phone connects by itself whenever it's on the same Wi-Fi, and the menu shows a Wi-Fi or cable symbol next to each phone. **Settings › Phones over Wi-Fi** turns it off again. A cable keeps the phone charged and gives the steadiest picture; on Harsha's network, 4K at 60 still ran at 59 fps over Wi-Fi.
+- **Settings** has Launch at login, Start when the phone is plugged in, notifications, Phones over Wi-Fi and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, **Run Setup Again**, and **Check for Updates**, which asks GitHub for the newest release and links to it.
 
 <p align="center">
   <img src="docs/assets/settings.png" width="400" alt="Settings: General, Live Controls shortcut and Help with Copy Diagnostics">
@@ -168,7 +169,7 @@ These don't create the menu bar item, open a window, start the phone's camera or
 'build/Android Webcam.app/Contents/MacOS/AndroidWebcam' --probe-hevc path/to/sample.hevc
 ```
 
-`--diagnose` checks USB device discovery, the bundled server and the OBS extension's device identity. It also reports the hidden wireless switch (see [docs/wireless-latency-session.md](docs/wireless-latency-session.md)). `--probe-hevc` checks the hardware decoder with an Annex B HEVC sample.
+`--diagnose` checks USB device discovery, the bundled server and the OBS extension's device identity. It also reports the Phones over Wi-Fi switch (see [docs/wireless-latency-session.md](docs/wireless-latency-session.md)). `--probe-hevc` checks the hardware decoder with an Annex B HEVC sample.
 
 To walk the menu and every window without a VM and without anything showing on screen, run the app as an off-screen dev instance with `scripts/dev.sh`, and stand in for a phone with an emulator and `scripts/fault-adb`. See [docs/dev-automation.md](docs/dev-automation.md).
 

@@ -631,6 +631,8 @@ final class SettingsModel: ObservableObject {
     var shortcutChanged: (Bool) -> Void = { _ in }
     var copyDiagnostics: () -> Void = {}
     var runSetup: () -> Void = {}
+    var wirelessChanged: (Bool) -> Void = { _ in }
+    var connectOverWiFi: () -> Void = {}
 
     func checkForUpdates() {
         guard update != .checking else { return }
@@ -644,6 +646,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.startOnPlugIn, store: Prefs.defaults) private var startOnPlugIn = false
     @AppStorage(Prefs.notifications, store: Prefs.defaults) private var notifications = true
     @AppStorage(Prefs.liveControlsShortcut, store: Prefs.defaults) private var shortcut = true
+    @AppStorage(Wireless.defaultsKey, store: Prefs.defaults) private var wireless = false
     @StateObject private var loginStatus = StateBox(SMAppService.mainApp.status)
     @StateObject private var loginError = StateBox<String?>(nil)
     @StateObject private var notificationsBlocked = StateBox(false)
@@ -679,6 +682,16 @@ struct SettingsView: View {
                             Image(systemName: "bell.slash").foregroundStyle(.orange)
                         }
                     }
+                }
+            }
+            SettingsGroup(title: "Phone", symbol: "smartphone") {
+                SettingToggle(title: "Phones over Wi-Fi",
+                              hint: "Lists phones that have Wireless debugging on, next to the ones on USB. A cable keeps the phone charged and gives the steadiest picture.",
+                              isOn: $wireless)
+                GroupDivider()
+                SettingAction(title: "Connect a phone over Wi-Fi",
+                              hint: "Pairs this Mac with a phone once, with a QR code. After that it connects by itself whenever it's on the same Wi-Fi.") {
+                    Button("Connect…") { model.connectOverWiFi() }
                 }
             }
             SettingsGroup(title: "Live Controls", symbol: "slider.horizontal.3") {
@@ -726,6 +739,7 @@ struct SettingsView: View {
         .animation(change, value: loginError.value)
         .onChange(of: notifications) { model.notificationsChanged($0); checkNotifications() }
         .onChange(of: shortcut) { model.shortcutChanged($0) }
+        .onChange(of: wireless) { model.wirelessChanged($0) }
         .onAppear(perform: checkNotifications)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginStatus.value = SMAppService.mainApp.status

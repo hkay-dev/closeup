@@ -1,6 +1,6 @@
 ---
 type: reference
-summary: How to run the wireless ADB latency session - the hidden wireless switch, the per-second capture log, and the USB-vs-wireless measurement matrix with the 50 ms and 200 ms bar.
+summary: How to run the wireless ADB latency session - the Phones over Wi-Fi switch, the per-second capture log, and the USB-vs-wireless measurement matrix with the 50 ms and 200 ms bar.
 covers:
   - Sources/AndroidWebcam/Wireless.swift
   - Sources/AndroidWebcam/Capture.swift
@@ -14,7 +14,7 @@ The measurement for kata:android-webcam#e1f7, revisiting the USB-only call in ka
 
 ## Turn the switch on
 
-The app is USB only unless the wireless switch is on. Set it before the app launches; it is read once per launch.
+The app is USB only unless the wireless switch is on: Settings › Phone › **Phones over Wi-Fi**, which takes effect at once (kata:android-webcam#b60q). **Connect a Phone over Wi-Fi…** in the Phone menu turns it on and pairs a phone with a QR code. The switch is the `wirelessAdb` default:
 
 ```sh
 defaults write com.harsha.android-webcam wirelessAdb -bool true     # on, for every launch

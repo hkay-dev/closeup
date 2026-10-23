@@ -14,5 +14,7 @@
     <key>LSUIElement</key><true/>
     <key>NSCameraUsageDescription</key><string>Android Webcam publishes your phone's video through the installed OBS camera extension.</string>
     <key>NSMicrophoneUsageDescription</key><string>Check Audio Sync listens to the microphone for a few seconds to time a clap against the video. Nothing is saved or sent anywhere.</string>
+    <key>NSLocalNetworkUsageDescription</key><string>Android Webcam looks for your phone on your Wi-Fi when you use it over wireless debugging.</string>
+    <key>NSBonjourServices</key><array><string>_adb-tls-pairing._tcp</string><string>_adb-tls-connect._tcp</string></array>
 </dict>
 </plist>

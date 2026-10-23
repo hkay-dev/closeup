@@ -32,6 +32,14 @@ final class DeviceWatcher {
         running?.terminate()
     }
 
+    /// Ends the current stream so it starts again at once and lists phones under the current Wi-Fi switch.
+    func refresh() {
+        lock.lock()
+        let running = process
+        lock.unlock()
+        running?.terminate()
+    }
+
     private var isStopped: Bool {
         lock.lock(); defer { lock.unlock() }
         return stopped

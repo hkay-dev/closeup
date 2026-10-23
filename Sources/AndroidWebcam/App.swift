@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var phoneMenuKey: String?
     private var cameraMenuKey: String?
 
+    private let wirelessConnector = WirelessConnector()
+    /// The Connect over Wi-Fi window's pairing, while it's open.
+    private var pairing: WirelessPairing?
     private let setup = SetupModel()
     private let imageStore = ImageSettingsStore()
     private lazy var controls = LiveControlsPanel(store: imageStore)
@@ -240,7 +243,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         settingsModel.shortcutChanged = { [weak self] on in self?.setShortcut(on) }
         settingsModel.copyDiagnostics = { [weak self] in self?.copyDiagnostics() }
         settingsModel.runSetup = { [weak self] in self?.showSetup() }
+        settingsModel.wirelessChanged = { [weak self] _ in self?.wirelessChanged() }
+        settingsModel.connectOverWiFi = { [weak self] in self?.showPairing() }
         setShortcut(Prefs.defaults.bool(forKey: Prefs.liveControlsShortcut))
+        wirelessConnector.listed = { [weak self] in self?.listedDevices ?? [] }
+        if Wireless.enabled { wirelessConnector.start() }
 
         if canNotify {
             let center = UNUserNotificationCenter.current()
@@ -431,7 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         coolDown.isHidden = !(running && live && !stopRequested && !restarting && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
 
-        phoneItem.isEnabled = !devices.isEmpty
+        phoneItem.isEnabled = true    // Connect a Phone over Wi-Fi… is always there
         rebuildPhoneMenu()
         for item in modeMenu.items {
             item.state = item.tag == (running ? runModeIndex : modeIndex) ? .on : .off
@@ -498,7 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if capture.running, let device = runDevice {
             let mode = Self.shortTitle(CaptureMode.all[runModeIndex])
             var content = MenuHeaderView.Content(dot: .wait, status: "Starting", picture: nil,
-                                                 model: device.displayName, stats: stats, note: note)
+                                                 model: Self.headerName(device), stats: stats, note: note)
             if stopRequested {
                 content.status = "Stopping"
                 content.picture = .init(veil: .init(title: "Stopping the webcam"))
@@ -531,16 +538,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return .init(dot: .off, status: "\(setup.doneCount) of \(setup.steps.count) setup steps done", picture: nil,
                          model: nil, stats: nil, note: lines.joined(separator: "\n"))
         }
-        let model = devices.first { $0.serial == selectedSerial }?.displayName
+        let phone = devices.first { $0.serial == selectedSerial }
         return .init(dot: .ready, status: "Ready",
-                     picture: .init(veil: .init(title: model.map { "\($0) is ready" } ?? "Ready",
+                     picture: .init(veil: .init(title: phone.map { "\($0.displayName) is ready" } ?? "Ready",
                                                 text: "Start the webcam to see the picture.")),
-                     model: model, stats: nil, note: note)
+                     model: phone.map(Self.headerName), stats: nil, note: note)
+    }
+
+    /// The phone's name under the status, with "Wi-Fi" when it isn't on the cable.
+    private static func headerName(_ device: AndroidDevice) -> String {
+        device.wireless ? "\(device.displayName) · Wi-Fi" : device.displayName
     }
 
     private func rebuildPhoneMenu() {
         let key = devices.map { "\($0.serial) \($0.status) \($0.displayName)" }.joined(separator: ",")
-            + "|\(selectedSerial ?? "")|\(capture.running)"
+            + "|\(selectedSerial ?? "")|\(capture.running)|\(Wireless.enabled)"
         guard key != phoneMenuKey else { return }
         phoneMenuKey = key
         phoneMenu.removeAllItems()
@@ -551,13 +563,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.tag = index
             item.state = device.serial == selectedSerial ? .on : .off
             item.isEnabled = device.authorized && !capture.running
+            // Which way it's connected, once both ways are possible.
+            if Wireless.enabled {
+                item.image = Self.symbol(device.wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
+                item.toolTip = device.wireless ? "On Wi-Fi" : "On USB"
+            }
             phoneMenu.addItem(item)
         }
         if devices.isEmpty {
-            let item = NSMenuItem(title: "No USB phone connected", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: Wireless.enabled ? "No phone connected" : "No USB phone connected", action: nil, keyEquivalent: "")
             item.isEnabled = false
             phoneMenu.addItem(item)
         }
+        phoneMenu.addItem(.separator())
+        let connect = NSMenuItem(title: "Connect a Phone over Wi-Fi…", action: #selector(showPairing), keyEquivalent: "")
+        connect.target = self
+        connect.image = Self.symbol(["wifi"])
+        phoneMenu.addItem(connect)
     }
 
     private func rebuildCameraMenu() {
@@ -723,6 +745,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             discoveryError = error.localizedDescription
         }
         lensQueries.formIntersection(Set(devices.map(\.serial)))
+        if Wireless.enabled { wirelessConnector.connectMissing() }
+        pairing?.devicesChanged(devices)
         for device in devices where device.authorized { queryLenses(device.serial); queryName(device.serial) }
         setupChanged()
     }
@@ -1255,6 +1279,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func showSettings() {
         shelf.show("settings", title: "\(appName) Settings") { SettingsView(model: settingsModel) }
+    }
+
+    /// Settings' Phones over Wi-Fi switch: the phone list follows at once, and paired phones connect while it's on.
+    private func wirelessChanged() {
+        if Wireless.enabled { wirelessConnector.start() } else { wirelessConnector.stop() }
+        watcher.refresh()
+        phoneMenuKey = nil
+        refreshUI()
+    }
+
+    /// Connect a Phone over Wi-Fi…: turns the switch on, since a paired phone is no use while the app hides it.
+    @objc private func showPairing() {
+        if !Wireless.enabled, !Wireless.forcedByEnvironment {
+            Prefs.defaults.set(true, forKey: Wireless.defaultsKey)
+            wirelessChanged()
+        }
+        let pairing = self.pairing ?? WirelessPairing()
+        if self.pairing == nil {
+            self.pairing = pairing
+            pairing.close = { [weak self] in self?.shelf.close("pairing") }
+            pairing.onPaired = { [weak self] in self?.wirelessConnector.connectMissing() }
+            pairing.start(listed: listedDevices)
+        }
+        shelf.show("pairing", title: "Connect over Wi-Fi", onClose: { [weak self] in
+            self?.pairing?.stop()
+            self?.pairing = nil
+        }) { PairingView(pairing: pairing) }
     }
 
     /// Puts a plain-text report on the pasteboard for a bug report. adb runs off main; the dev instance records it.
