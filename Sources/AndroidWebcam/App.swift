@@ -218,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 : mode.height >= 2160 ? "Most detail. The phone runs warmest"
                 : mode.fps > 30 ? "Smoother motion" : "Default. Coolest for the phone")
             modeMenu.addItem(item)
+            item.view = MenuRowView(item, checkColumn: true)
         }
         modeMenu.addItem(modeLocked)
         for (index, orientation) in PictureOrientation.allCases.enumerated() {
@@ -231,8 +232,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.image = Self.symbol(symbols)
             Self.describe(item, text)
             orientationMenu.addItem(item)
+            item.view = MenuRowView(item, checkColumn: true)
         }
         for item in menu.items + modeMenu.items + orientationMenu.items + [zoomIn, zoomOut, flashlight] where item.action != nil { item.target = self }
+        // Start, Stop and the choices in submenus keep the menu open, so the click's result shows right there.
+        mainAction.view = MenuRowView(mainAction, checkColumn: false)
+        for item in [zoomIn, zoomOut, flashlight] { item.view = MenuRowView(item, checkColumn: true) }
         statusItem?.menu = menu
         NSApp.mainMenu = makeKeyEquivalentMenu()
 
@@ -448,16 +453,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let content = headerContent()
         header.update(content)
         let symbol = !running ? "camera" : live && !stopRequested ? "camera.fill" : "camera.badge.ellipsis"
-        if symbol != statusSymbol {
+        if symbol != statusSymbol, let button = statusItem?.button {
             statusSymbol = symbol
-            statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            button.wantsLayer = true
+            crossfade(button)
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         }
         showStatusClock()
         statusItem?.button?.toolTip = "\(appName): \(content.status)"
         statusItem?.button?.setAccessibilityLabel("\(appName), \(live && !stopRequested ? "live" : content.status)")
-        // Before setup is done there's no phone to show; the menu and Live Controls offer Finish Setup… right there.
+        // No phone to show: before setup is done the menu and Live Controls offer Finish Setup… right there.
         let veil: PreviewView.Veil? = content.picture == nil
-            ? .init(title: setup.steps.isEmpty ? "No picture yet" : "Finish setup to see the picture")
+            ? .init(title: setup.steps.isEmpty ? "No picture yet" : setup.complete ? "No phone connected" : "Finish setup to see the picture")
             : content.picture?.veil
         (window?.contentView as? PreviewView)?.setVeil(veil)
 
@@ -509,6 +516,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         preview.state = window != nil ? .on : .off
         // Kept current while closed too, so the panel opens on the right state instead of animating into it.
         updateControls(content, veil: veil)
+        MenuRowView.refreshAll()
     }
 
     /// While live, a red camera and the call's clock in the menu bar, ticking with the menu closed too.
@@ -523,6 +531,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         let title = since.map { " \(Self.elapsed($0))" } ?? ""
         guard title != button.title || (since == nil) != (button.contentTintColor == nil) else { return }
+        // Going live or not fades; the clock's ticks don't.
+        if (since == nil) != (button.contentTintColor == nil) { button.wantsLayer = true; crossfade(button) }
         button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         button.title = title
         button.imagePosition = since == nil ? .imageOnly : .imageLeading
@@ -622,7 +632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                                                  phone: headerPhone(device), stats: stats, note: note)
             if stopRequested {
                 content.status = "Stopping"
-                content.picture = .init(veil: .init(title: "Stopping the webcam"))
+                content.picture = .init(veil: .init(title: "Stopping the webcam", busy: true), still: lastStill)
             } else if live, let since = liveSince {
                 let time = Self.elapsed(since)
                 content.dot = .live
@@ -631,17 +641,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 content.note = note ?? holdNote
             } else if switchingLens {
                 content.status = "Switching camera"
-                content.picture = .init(veil: .init(title: "Switching camera on \(device.displayName)", text: "The camera stays open for your call."))
+                content.picture = .init(veil: .init(title: "Switching camera on \(device.displayName)", text: "The camera stays open for your call.", busy: true))
             } else if liveSince != nil {
                 content.status = "Reconnecting"
                 // The stream can drop with the phone still plugged in, for example when its camera server restarts.
                 content.picture = listedDevices.contains(where: { $0.serial == device.serial && $0.authorized })
-                    ? .init(veil: .init(title: "Reconnecting to \(device.displayName)", text: "The camera stays open for your call."))
+                    ? .init(veil: .init(title: "Reconnecting to \(device.displayName)", text: "The camera stays open for your call.", busy: true))
                     : .init(veil: .init(title: "Plug the phone back in",
                                         text: "The camera stays open for your call and picks up again on its own."))
             } else {
+                // The last picture stays under the loader until the phone's first frame takes its place.
                 content.picture = .init(veil: .init(title: "Starting \(device.displayName)",
-                                                    text: "The phone's camera can take a few seconds to open."))
+                                                    text: "The phone's camera can take a few seconds to open.", busy: true),
+                                        still: lastStill)
             }
             return content
         }
@@ -654,9 +666,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                          phone: headerPhone(nil), stats: nil, note: lines.joined(separator: "\n"))
         }
         let device = devices.first { $0.serial == selectedSerial }
+        // With no phone on USB or Wi-Fi, the picture is a plain gray screen.
         return .init(dot: .ready, status: "Ready",
-                     picture: .init(veil: .init(title: device.map { "\($0.displayName) is ready" } ?? "Ready",
-                                                text: "Start the webcam to see the picture."), still: lastStill),
+                     picture: device.map { .init(veil: .init(title: "\($0.displayName) is ready",
+                                                             text: "Start the webcam to see the picture."), still: lastStill) },
                      phone: headerPhone(device), stats: device.flatMap { readyStats[$0.serial] }, note: note)
     }
 
@@ -749,6 +762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.isEnabled = device.authorized && !capture.running
             item.image = Self.symbol(device.wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
             phoneMenu.addItem(item)
+            item.view = MenuRowView(item, checkColumn: true)
         }
         if devices.isEmpty {
             let item = NSMenuItem(title: Wireless.enabled ? "No phone connected" : "No USB phone connected", action: nil, keyEquivalent: "")
@@ -781,6 +795,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 item.tag = index
                 item.state = lens.id == checked ? .on : .off
                 cameraMenu.addItem(item)
+                item.view = MenuRowView(item, checkColumn: true)
             }
         }
         if list.isEmpty {
@@ -1275,11 +1290,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc private func mainActionChosen() {
         if capture.running {
             stopRequested = true; restarting = false
+            // The stopping veil goes over the last picture, blurred, which then stays for the ready one.
+            keepLastPicture()
             capture.stop()
             refreshUI()
             return
         }
-        guard setup.complete else { showSetup(); return }
+        // Setup opens a window, so the menu gets out of its way; Start and Stop leave it open.
+        guard setup.complete else { menu.cancelTracking(); showSetup(); return }
         guard let device = devices.first(where: { $0.serial == selectedSerial && $0.authorized }) else { return }
         if !NSRunningApplication.runningApplications(withBundleIdentifier: Self.obsBundleID).isEmpty {
             note = "Quit OBS before starting this camera."

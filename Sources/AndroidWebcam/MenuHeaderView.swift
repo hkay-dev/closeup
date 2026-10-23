@@ -250,7 +250,8 @@ final class MenuHeaderView: NSView {
             status()
         }
 
-        picture.isHidden = content.picture == nil
+        // No phone to show still gets the picture's place, as a plain gray screen.
+        picture.setBlank(content.picture == nil)
         picture.setStill(content.picture?.still)
         picture.setVeil(content.picture?.veil)
         if let text = content.picture?.badge { badge.label.stringValue = text }
@@ -283,6 +284,9 @@ final class MenuHeaderView: NSView {
         setFrameSize(NSSize(width: stackWidth.constant, height: stack.fittingSize.height))
     }
 
+    /// A reading that isn't known yet, such as the battery of a phone that isn't connected. An en dash.
+    private static let unknown = "\u{2013}"
+
     /// At or under this, and not charging, the battery reads red.
     static let lowBattery = 20
 
@@ -314,15 +318,15 @@ final class MenuHeaderView: NSView {
         icon.contentTintColor = tint
     }
 
-    /// Connection, temperature and battery as plain values. A warm phone or a low battery changes color, and its
-    /// tooltip says why; the words carry it for VoiceOver.
+    /// Connection, temperature and battery as plain values, or dashes for what isn't known. A warm phone or a low
+    /// battery changes color, and its tooltip says why; the words carry it for VoiceOver.
     private func showReadings(_ phone: Phone?, _ stats: PhoneStats?) {
         guard let phone else { fade(readings, to: 0) { self.relayout() }; return }
         fade(readings, to: 1)
         let link: (symbols: [String], text: String, tip: String) = switch phone.link {
         case .usb: (["cable.connector", "cable.connector.horizontal"], "USB", "Connected over USB")
         case .wifi: (["wifi"], "Wi-Fi", "Connected over Wi-Fi")
-        case nil: (["iphone.slash", "wifi.slash"], "Not connected", "The phone isn't on USB or Wi-Fi")
+        case nil: (["iphone.slash", "wifi.slash"], Self.unknown, "The phone isn't on USB or Wi-Fi")
         }
         setSymbol(linkIcon, link.symbols, tint: .secondaryLabelColor)
         setText(linkLabel, link.text, color: phone.link == nil ? .secondaryLabelColor : .labelColor)
@@ -330,9 +334,19 @@ final class MenuHeaderView: NSView {
         linkGroup.setAccessibilityElement(true)
         linkGroup.setAccessibilityLabel(phone.link == nil ? "Phone not connected" : link.tip)
 
-        let shown = phone.link != nil ? stats : nil
-        for view in [tempDivider, tempGroup, batteryDivider, batteryGroup] as [NSView] { fade(view, to: shown == nil ? 0 : 1) }
-        guard let stats = shown else { return }
+        for view in [tempDivider, tempGroup, batteryDivider, batteryGroup] as [NSView] { fade(view, to: 1) }
+        guard let stats = phone.link != nil ? stats : nil else {
+            setSymbol(tempIcon, ["thermometer.medium"], tint: .secondaryLabelColor)
+            setText(tempLabel, Self.unknown, color: .secondaryLabelColor)
+            setSymbol(batteryIcon, ["battery.50"], tint: .secondaryLabelColor)
+            setText(batteryLabel, Self.unknown, color: .secondaryLabelColor)
+            fade(boltIcon, to: 0)
+            tempGroup.toolTip = "Phone temperature, once it's connected"
+            batteryGroup.toolTip = "Battery, once the phone's connected"
+            tempGroup.setAccessibilityLabel("Phone temperature not known")
+            batteryGroup.setAccessibilityLabel("Battery not known")
+            return
+        }
         let hot = stats.isHot
         let celsius = Measurement(value: stats.temperatureC, unit: UnitTemperature.celsius)
         let spoken = Self.spokenTemperature.string(from: celsius)
@@ -362,7 +376,7 @@ final class MenuHeaderView: NSView {
 
     /// Shows a frame in the thumbnail. Main thread only.
     func show(_ frame: CVPixelBuffer) {
-        guard !picture.isHidden else { return }
+        guard content?.picture != nil else { return }
         do { try picture.show(frame) }
         catch where !loggedPictureError {
             loggedPictureError = true

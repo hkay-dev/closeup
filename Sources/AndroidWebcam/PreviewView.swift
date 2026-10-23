@@ -16,6 +16,8 @@ final class PreviewView: NSView {
     let display = AVSampleBufferDisplayLayer()
     private let still = CALayer()
     private var stillImage: CGImage?
+    private let blank = CALayer()
+    private var blankShown = false
     private let sampler = FrameSampler(fps: 30)
     private let veil = NSView()
     private let veilWords = NSStackView()
@@ -34,6 +36,8 @@ final class PreviewView: NSView {
         still.contentsGravity = .resizeAspectFill
         still.opacity = 0
         layer?.addSublayer(still)
+        blank.opacity = 0
+        layer?.addSublayer(blank)
 
         // White on a dark wash, like the system's own video overlays.
         veil.wantsLayer = true
@@ -84,6 +88,7 @@ final class PreviewView: NSView {
         CATransaction.setDisableActions(true)
         display.frame = bounds
         still.frame = bounds
+        blank.frame = bounds
         CATransaction.commit()
     }
 
@@ -101,6 +106,33 @@ final class PreviewView: NSView {
     }
 
     func clear() { display.flushAndRemoveImage() }
+
+    /// A plain gray screen over everything but the veil, for when there's no phone to show. Fades in and out.
+    func setBlank(_ on: Bool) {
+        guard on != blankShown else { return }
+        blankShown = on
+        tintBlank()
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = blank.presentation()?.opacity ?? blank.opacity
+        fade.duration = Motion.reduced || window == nil ? 0 : Motion.duration
+        blank.opacity = on ? 1 : 0
+        blank.add(fade, forKey: "fade")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        tintBlank()
+    }
+
+    private func tintBlank() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            blank.backgroundColor = NSColor(white: dark ? 0.24 : 0.84, alpha: 1).cgColor
+        }
+        CATransaction.commit()
+    }
 
     /// A picture over the video layer and under the veil, such as the last frame once the webcam stops. Fades in and out.
     func setStill(_ image: CGImage?) {
