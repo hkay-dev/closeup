@@ -3,7 +3,7 @@
 # The instance has its own defaults, no status item, windows parked below the desktop, and a control
 # socket that only exists because ANDROID_WEBCAM_DEV_DIR is set. Nothing shows on screen.
 #
-#   scripts/dev.sh build                 build the app (scripts/build-app.sh) through the build queue
+#   scripts/dev.sh build                 build the app (scripts/build-app.sh)
 #   scripts/dev.sh start [KEY=VALUE ...] start the instance; prints its directory. KEY=VALUE (KEY:=JSON) seeds its defaults
 #   scripts/dev.sh stop                  choose Quit, wait for the process, remove the directory
 #   scripts/dev.sh state                 header text, menu items, open windows
@@ -104,7 +104,7 @@ command="${1:-}"
 [[ -n "$command" ]] || usage
 shift
 case "$command" in
-    build) exec qm with build "awebcam-$(basename "$root")" -- "$root/scripts/build-app.sh" ;;
+    build) exec "$root/scripts/build-app.sh" ;;
     start) start "$@" ;;
     stop) stop ;;
     state | menu | windows | effects | defaults | ping) ctl "$command" ;;
