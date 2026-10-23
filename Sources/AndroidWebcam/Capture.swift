@@ -344,6 +344,8 @@ final class CaptureController {
     var onFrame: ((CVPixelBuffer) -> Void)?
     var onPhoneStats: ((PhoneStats) -> Void)?
     var onLive: ((Bool) -> Void)?
+    /// Called off main with whether the phone is upright, or nil while it lies flat, each time it reports a turn.
+    var onHold: ((Bool?) -> Void)?
     /// Called on main with (lens it went back to, lens that failed) when a switched-to lens can't start.
     var onLensFallback: ((String, String) -> Void)?
     /// 0 = off ... 1 = strong; applied from the next frame.
@@ -374,6 +376,7 @@ final class CaptureController {
         }
         lock.unlock()
         fputs("Phone turn \(device.map(String.init) ?? "flat"), camera sensor turn \(sensor)\(front ? ", front" : "")\n", stderr)
+        onHold?(device.map { $0 % 2 == 0 })
         applyTurns()
     }
 

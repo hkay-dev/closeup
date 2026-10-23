@@ -116,6 +116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var cableLoose = false
     /// One plain line for the header: the last error or a warning.
     private var note: String?
+    /// The phone has been upright for 2 s while live, from its motion sensor.
+    private var heldUpright = false
+    private var holdCheck: DispatchWorkItem?
 
     private var signalSources: [DispatchSourceSignal] = []
     private var devControl: DevControl?
@@ -204,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         capture.onLive = { [weak self] isLive in self?.captureLive(isLive) }
         capture.onLensFallback = { [weak self] good, failed in self?.lensFellBack(to: good, from: failed) }
         capture.onPhoneStats = { [weak self] stats in self?.phoneStats(stats) }
+        capture.onHold = { [weak self] upright in DispatchQueue.main.async { self?.phoneHeld(upright: upright == true) } }
         capture.macSharpness = Float(imageStore.macSharpness)
         imageStore.onChange = { [weak self] in
             guard let self else { return }
@@ -514,6 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 content.dot = .live
                 content.status = "Live \(time) · \(mode)"
                 content.picture = .init(badge: "LIVE \(time)")
+                content.note = note ?? holdNote
             } else if switchingLens {
                 content.status = "Switching camera"
                 content.picture = .init(veil: .init(title: "Switching camera on \(device.displayName)", text: "The camera stays open for your call."))
@@ -548,6 +553,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// The phone's name under the status, with "Wi-Fi" when it isn't on the cable.
     private static func headerName(_ device: AndroidDevice) -> String {
         device.wireless ? "\(device.displayName) · Wi-Fi" : device.displayName
+    }
+
+    /// Only a notice: Landscape is the default for a webcam, and an upright phone may be on purpose.
+    private var holdNote: String? {
+        imageStore.orientation == .landscape && heldUpright
+            ? "The picture is set to landscape, but the phone looks like it's held upright." : nil
+    }
+
+    /// Waits 2 s on an upright hold, so turning the phone through upright on its way to a mount doesn't flash the notice.
+    private func phoneHeld(upright: Bool) {
+        holdCheck?.cancel()
+        guard upright else {
+            if heldUpright { heldUpright = false; refreshUI() }
+            return
+        }
+        let check = DispatchWorkItem { [weak self] in
+            self?.heldUpright = true
+            self?.refreshUI()
+        }
+        holdCheck = check
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: check)
     }
 
     private func rebuildPhoneMenu() {
@@ -974,6 +1000,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // Asked here rather than at launch, so the prompt comes when there's something to say.
         if Prefs.defaults.bool(forKey: Prefs.notifications) { requestNotificationPermission() }
         note = nil
+        holdCheck?.cancel(); heldUpright = false
         previewFailed = false
         Prefs.defaults.set(device.serial, forKey: Prefs.serial)
         capture.macSharpness = Float(imageStore.macSharpness)

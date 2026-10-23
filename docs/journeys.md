@@ -42,7 +42,7 @@ Steps:
 2. Capture Mode lists 4K · 60, 1080p · 60, 1080p · 30, 1080p · 120; disabled while running.
 3. While live, Camera lists the lenses; pick one and the header says "Switching camera" while the call keeps the camera. A lens that can't run the mode goes back to the one that worked, and the header says so ("Back · Main can't run 1080p · 30. The webcam went back to Front.").
 4. Zoom In, Zoom Out, Flashlight change the live picture; the flashlight state shows in the menu.
-5. Orientation (Landscape, Portrait, Auto-Rotate) works live or stopped and turns the next frame. Landscape and Portrait each follow the phone between their two holds; Auto-Rotate follows all four. Portrait frames are the mode's size, with the tall picture between black bars. While the phone lies flat, the last hold stays.
+5. Orientation (Landscape, Portrait, Auto-Rotate) works live or stopped and turns the next frame. Landscape and Portrait each follow the phone between their two holds; Auto-Rotate follows all four. Portrait frames are the mode's size, with the tall picture between black bars. While the phone lies flat, the last hold stays. With Landscape picked and the phone upright for 2 s while live, the header and Live Controls say "The picture is set to landscape, but the phone looks like it's held upright." It says nothing else and goes away when the phone turns sideways or Orientation changes.
 Touches: saved serial, mode, lens and orientation in UserDefaults, the phone's camera list, control socket messages both ways (orientation comes from the phone's accelerometer), the Mac Core Image step.
 
 ## Preview window (regular)
