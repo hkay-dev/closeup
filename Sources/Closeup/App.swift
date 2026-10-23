@@ -1507,14 +1507,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let alert = NSAlert()
             alert.messageText = "Why \u{201C}OBS Virtual Camera\u{201D}?"
             alert.informativeText = """
-                \(appName) sends its picture through the virtual camera that OBS Studio installs, so call apps show \
-                OBS's name for it. OBS only has to be installed; it stays closed.
+                \(appName) borrows the virtual camera that OBS installs, and OBS got to name it.
 
-                A camera with a name of its own, like your phone's, would mean \(appName) shipping its own camera \
-                extension. macOS only loads a camera extension that's signed by a paid Apple Developer ID, and this \
-                free project doesn't have one, so the name can't be changed.
+                A camera of \(appName)'s own needs a paid Apple developer account and notarization. As much as I love \
+                open source, I can't justify that bill just to rename a camera. And even if I paid it, you still \
+                wouldn't get to pick the name. It'd just say \(appName).
                 """
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Fair Enough")
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
         }

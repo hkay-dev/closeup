@@ -72,9 +72,9 @@ final class MenuHeaderView: NSView {
     private let batteryDivider = MenuHeaderView.divider()
     private let readings = NSStackView()
     private let noteLabel = NSTextField(wrappingLabelWithString: "")
-    private let hintLabel = NSTextField(labelWithString: "")
+    private let hintLabel = NSTextField(wrappingLabelWithString: "")
     private let whyButton = NSButton(title: "", target: nil, action: nil)
-    private lazy var hint = NSStackView(views: [hintLabel, whyButton])
+    private let hint = NSStackView()
     /// Asks why call apps list the camera as OBS Virtual Camera.
     var onWhy: (() -> Void)?
     private let stack = NSStackView()
@@ -142,22 +142,28 @@ final class MenuHeaderView: NSView {
         noteLabel.textColor = .secondaryLabelColor
         noteLabel.preferredMaxLayoutWidth = Self.width - 32
 
-        let hintText = NSMutableAttributedString(string: "Look for ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
-        hintText.append(NSAttributedString(string: "OBS Virtual Camera", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]))
-        hintText.append(NSAttributedString(string: " in your call app", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let plain: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .paragraphStyle: centered]
+        let hintText = NSMutableAttributedString(string: "Look for ", attributes: plain)
+        hintText.append(NSAttributedString(string: "OBS Virtual Camera", attributes: plain.merging([.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]) { $1 }))
+        hintText.append(NSAttributedString(string: " in your video chatting app", attributes: plain))
         hintLabel.attributedStringValue = hintText
-        hintLabel.textColor = .secondaryLabelColor
-        // A quiet link: the faded words open the explanation.
+        hintLabel.preferredMaxLayoutWidth = Self.pictureSize.width - 24
         whyButton.isBordered = false
         whyButton.attributedTitle = NSAttributedString(string: "Why is it called that?", attributes: [
-            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
-            .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: NSColor.quaternaryLabelColor,
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
         ])
         whyButton.target = self
         whyButton.action = #selector(whyChosen)
+        hint.setViews([hintLabel, whyButton], in: .top)
         hint.orientation = .vertical
-        hint.alignment = .leading
-        hint.spacing = 1
+        hint.alignment = .centerX
+        hint.spacing = 3
+        hint.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        hint.wantsLayer = true
+        hint.layer?.cornerRadius = 8
         hint.alphaValue = 0
         hint.isHidden = true
 
@@ -190,6 +196,7 @@ final class MenuHeaderView: NSView {
             statusRow.heightAnchor.constraint(equalToConstant: 22),
             nameRow.widthAnchor.constraint(equalTo: picture.widthAnchor),
             readings.widthAnchor.constraint(equalTo: picture.widthAnchor),
+            hint.widthAnchor.constraint(equalTo: picture.widthAnchor),
             statusLabel.widthAnchor.constraint(lessThanOrEqualTo: picture.widthAnchor, constant: -40),
         ])
     }
@@ -243,6 +250,7 @@ final class MenuHeaderView: NSView {
             Self.setColor(dot.layer, color.cgColor, blend: blend)
             Self.setColor(statusRow.layer, color.withAlphaComponent(0.16).cgColor, blend: blend)
             picture.layer?.borderColor = NSColor.separatorColor.cgColor
+            hint.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.14).cgColor
         }
     }
 
