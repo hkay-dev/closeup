@@ -5,6 +5,11 @@ import AppKit
 /// setting those on the NSMenuItem as usual and calls `MenuRowView.refreshAll()` after. Changes fade in place.
 final class MenuRowView: NSView {
     private static let rows = NSHashTable<MenuRowView>.weakObjects()
+    /// Set while the menu is open, after its opening refresh, so only rows that turn up after that slide in. A row
+    /// that never got on screen before the menu closed doesn't slide in at the next open.
+    static var menuOpen = false {
+        didSet { if !menuOpen { for row in rows.allObjects { row.entering = false } } }
+    }
 
     /// Picks up every row's item changes, animating the ones that are on screen.
     static func refreshAll() {
@@ -18,6 +23,7 @@ final class MenuRowView: NSView {
         var on = false
         var enabled = true
         var highlighted = false
+        var hidden = false
     }
 
     private weak var item: NSMenuItem?
@@ -28,6 +34,8 @@ final class MenuRowView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private var shown: Look?
+    /// Shown or added while the menu is open: slides in once it's on screen.
+    private var entering = false
 
     // Lined up with the system's own rows on macOS 26.
     private static let inset: CGFloat = 5
@@ -38,10 +46,11 @@ final class MenuRowView: NSView {
     private static let trailing: CGFloat = 14
 
     /// Makes a row for `item`, to set as its view. `checkColumn` leaves room on the left for a check mark, as in a list of
-    /// choices.
-    init(_ item: NSMenuItem, checkColumn: Bool) {
+    /// choices. `entering` slides it in when the menu is already open, for a row that wasn't there a moment ago.
+    init(_ item: NSMenuItem, checkColumn: Bool, entering: Bool = false) {
         self.item = item
         self.checkColumn = checkColumn
+        self.entering = entering && Self.menuOpen
         super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
         autoresizingMask = [.width]
 
@@ -82,7 +91,7 @@ final class MenuRowView: NSView {
     private var look: Look {
         guard let item else { return Look() }
         var look = Look(title: item.title, image: item.image, on: item.state == .on, enabled: item.isEnabled,
-                        highlighted: item.isHighlighted && item.isEnabled)
+                        highlighted: item.isHighlighted && item.isEnabled, hidden: item.isHidden)
         if #available(macOS 14.4, *) { look.subtitle = item.subtitle }
         return look
     }
@@ -93,6 +102,7 @@ final class MenuRowView: NSView {
         let new = look
         guard new != shown else { return }
         let old = shown
+        if old?.hidden == true, !new.hidden, Self.menuOpen { entering = true }
         shown = new
         let animate = old != nil && window != nil
 
@@ -131,6 +141,7 @@ final class MenuRowView: NSView {
             setFrameSize(NSSize(width: window == nil ? max(frame.width, width) : frame.width, height: height))
         }
         needsLayout = true
+        if entering, window != nil { slideIn() }
     }
 
     private var textX: CGFloat {
@@ -161,6 +172,28 @@ final class MenuRowView: NSView {
     override func viewWillDraw() {
         refresh()
         super.viewWillDraw()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if entering, window != nil { slideIn() }
+    }
+
+    /// The row's contents slide in from the left as they fade up; under Reduce Motion they only fade.
+    private func slideIn() {
+        entering = false
+        for view in [check, icon, titleLabel, subtitleLabel] {
+            guard let layer = view.layer else { continue }
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = Motion.entranceFade
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(fade, forKey: "entranceFade")
+            if !Motion.reduced {
+                layer.add(Motion.spring("transform.translation.x", from: -14, to: 0, response: 0.3, damping: 0.86), forKey: "entrance")
+            }
+        }
     }
 
     override func mouseUp(with event: NSEvent) {

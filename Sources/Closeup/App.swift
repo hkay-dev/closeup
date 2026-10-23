@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let modeLocked = AppDelegate.lockedNote()
     // What each submenu was last built from. Rebuilding a submenu while it's open loses the highlight.
     private var phoneMenuKey: String?
+    private var phoneRows: Set<String> = []
     private var cameraMenuKey: String?
 
     private let wirelessConnector = WirelessConnector()
@@ -239,6 +240,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // Start, Stop and the choices in submenus keep the menu open, so the click's result shows right there.
         mainAction.view = MenuRowView(mainAction, checkColumn: false)
         for item in [zoomIn, zoomOut, flashlight] { item.view = MenuRowView(item, checkColumn: true) }
+        // Rows that come and go while the menu is open are drawn here too, so they slide in.
+        coolDown.view = MenuRowView(coolDown, checkColumn: false)
+        modeLocked.view = MenuRowView(modeLocked, checkColumn: true)
         statusItem?.menu = menu
         NSApp.mainMenu = makeKeyEquivalentMenu()
 
@@ -432,6 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updateSetup()
         queryReadyStats()
         refreshUI()
+        MenuRowView.menuOpen = true
         // The menu runs the loop in event tracking mode, so the clock goes in the common modes.
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.refreshUI() }
         RunLoop.main.add(timer, forMode: .common)
@@ -439,6 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        MenuRowView.menuOpen = false
         frameLock.lock()
         headerOpen = false
         headerFrame = nil
@@ -750,6 +756,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard key != phoneMenuKey else { return }
         phoneMenuKey = key
         phoneMenu.removeAllItems()
+        // Rows that weren't in the list a moment ago slide in, such as a phone that was just plugged in.
+        let before = phoneRows
+        phoneRows = []
+        func add(_ item: NSMenuItem, _ id: String) {
+            phoneMenu.addItem(item)
+            phoneRows.insert(id)
+            item.view = MenuRowView(item, checkColumn: true, entering: !before.contains(id))
+        }
         for (index, device) in devices.enumerated() {
             let advice = device.authorized ? nil : Self.statusAdvice(device.status)
             let link = device.wireless ? "Connected over Wi-Fi" : "Connected over USB"
@@ -763,23 +777,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             item.state = device.serial == selectedSerial ? .on : .off
             item.isEnabled = device.authorized && !capture.running
             item.image = Self.symbol(device.wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
-            phoneMenu.addItem(item)
-            item.view = MenuRowView(item, checkColumn: true)
+            add(item, device.serial)
         }
         if devices.isEmpty {
             let item = NSMenuItem(title: Wireless.enabled ? "No phone connected" : "No USB phone connected", action: nil, keyEquivalent: "")
             item.isEnabled = false
-            phoneMenu.addItem(item)
+            add(item, "none")
         } else if capture.running {
-            phoneMenu.addItem(Self.lockedNote())
+            add(Self.lockedNote(), "locked")
         }
         phoneMenu.addItem(.separator())
         let connect = NSMenuItem(title: "Connect a Phone over Wi-Fi…", action: #selector(showPairing), keyEquivalent: "")
         connect.target = self
         connect.image = Self.symbol(["wifi"])
-        phoneMenu.addItem(connect)
-        // Drawn like the phone rows, which size the submenu; a system row beside them was cut short.
-        connect.view = MenuRowView(connect, checkColumn: true)
+        add(connect, "connect")
     }
 
     private func rebuildCameraMenu() {
