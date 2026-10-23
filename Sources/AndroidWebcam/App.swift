@@ -13,7 +13,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let statusItem: NSStatusItem? = DevMode.isOn ? nil : NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let header = MenuHeaderView()
-    private let mainAction = NSMenuItem(title: "Start Webcam", action: #selector(mainActionChosen), keyEquivalent: "s")
+    private let mainAction = NSMenuItem(title: "Start Webcam", action: #selector(mainActionChosen), keyEquivalent: "")
+    // The menu lists no shortcuts: a listed one reserves a column that keeps row values off the right edge. These
+    // hidden items keep ⌘S and ⌃⌥⌘L working while the menu is open.
+    private let mainKey = AppDelegate.hiddenKey(#selector(mainActionChosen), "s")
+    private let controlsKey = AppDelegate.hiddenKey(#selector(showLiveControls), "")
     private let coolDown = NSMenuItem(title: "Switch to 1080p · 30 to cool down", action: #selector(switchToCoolMode), keyEquivalent: "")
     private let phoneItem = NSMenuItem(title: "Phone", action: nil, keyEquivalent: "")
     private let modeItem = NSMenuItem(title: "Capture Mode", action: nil, keyEquivalent: "")
@@ -21,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let cameraItem = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
     private let controlsItem = NSMenuItem(title: "Live Controls…", action: #selector(showLiveControls), keyEquivalent: "")
     private let syncItem = NSMenuItem(title: "Check Audio Sync…", action: #selector(showSyncCheck), keyEquivalent: "")
-    private let preview = NSMenuItem(title: "Show Preview", action: #selector(togglePreview), keyEquivalent: "p")
+    private let preview = NSMenuItem(title: "Show Preview", action: #selector(togglePreview), keyEquivalent: "")
     private let zoomIn = NSMenuItem(title: "Zoom In", action: #selector(zoomInChosen), keyEquivalent: "+")
     private let zoomOut = NSMenuItem(title: "Zoom Out", action: #selector(zoomOutChosen), keyEquivalent: "-")
     private let flashlight = NSMenuItem(title: "Flashlight", action: #selector(toggleFlashlight), keyEquivalent: "l")
@@ -183,11 +187,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(syncItem)
         menu.addItem(.separator())
         menu.addItem(preview)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "")
         menu.addItem(settingsItem)
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp), keyEquivalent: "")
         menu.addItem(quitItem)
+        for item in [mainKey, controlsKey, Self.hiddenKey(#selector(togglePreview), "p"),
+                     Self.hiddenKey(#selector(showSettings), ","), Self.hiddenKey(#selector(quitApp), "q")] {
+            menu.addItem(item)
+        }
         let symbols: [(NSMenuItem, [String])] = [
             (coolDown, ["thermometer.snowflake", "snowflake"]), (phoneItem, ["smartphone", "iphone"]),
             (modeItem, ["film"]), (orientationItem, ["rectangle.portrait.rotate", "rotate.right"]), (cameraItem, ["camera.aperture", "camera"]),
@@ -468,6 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             mainAction.title = main.title
             mainAction.image = Self.symbol([main.symbol])
         }
+        mainKey.isEnabled = mainAction.isEnabled
         coolDown.isHidden = !(running && live && !stopRequested && !restarting && stats?.isHot == true && runModeIndex != Self.coolModeIndex)
 
         phoneItem.isEnabled = true    // Connect a Phone over Wi-Fi… is always there
@@ -538,7 +547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     /// Where a row's value ends, from the start of its title: the menu is the header's width.
-    private static let valueTab: CGFloat = 176
+    private static let valueTab: CGFloat = 232
 
     /// A submenu row with what's picked at its right edge, in the secondary color.
     private static func showValue(_ item: NSMenuItem, _ title: String, _ value: String?) {
@@ -1452,10 +1461,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func setShortcut(_ on: Bool) {
         let problem = hotkey.set(on)
         settingsModel.shortcutProblem = problem
-        // The menu shows the keys only when they work.
+        // The keys work from the open menu too, while they work at all.
         let shown = on && problem == nil
-        controlsItem.keyEquivalent = shown ? GlobalHotkey.keyEquivalent : ""
-        controlsItem.keyEquivalentModifierMask = shown ? GlobalHotkey.modifiers : []
+        controlsKey.keyEquivalent = shown ? GlobalHotkey.keyEquivalent : ""
+        controlsKey.keyEquivalentModifierMask = shown ? GlobalHotkey.modifiers : []
+    }
+
+    /// A shortcut that works while the menu is open without being listed in it.
+    private static func hiddenKey(_ action: Selector, _ key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: action, keyEquivalent: key)
+        item.isHidden = true
+        item.allowsKeyEquivalentWhenHidden = true
+        return item
     }
 
     @objc private func showSettings() {
