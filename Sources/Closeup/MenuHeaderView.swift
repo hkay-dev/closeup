@@ -32,6 +32,8 @@ final class MenuHeaderView: NSView {
         var phone: Phone?
         var stats: PhoneStats?
         var note: String?
+        /// While live: which camera to pick in the call app, with a way to ask about its name.
+        var cameraHint = false
     }
 
     static let width: CGFloat = 300
@@ -70,6 +72,11 @@ final class MenuHeaderView: NSView {
     private let batteryDivider = MenuHeaderView.divider()
     private let readings = NSStackView()
     private let noteLabel = NSTextField(wrappingLabelWithString: "")
+    private let hintLabel = NSTextField(labelWithString: "")
+    private let whyButton = NSButton(title: "", target: nil, action: nil)
+    private lazy var hint = NSStackView(views: [hintLabel, whyButton])
+    /// Asks why call apps list the camera as OBS Virtual Camera.
+    var onWhy: (() -> Void)?
     private let stack = NSStackView()
     private var content: Content?
     private var loggedPictureError = false
@@ -135,7 +142,26 @@ final class MenuHeaderView: NSView {
         noteLabel.textColor = .secondaryLabelColor
         noteLabel.preferredMaxLayoutWidth = Self.width - 32
 
-        let text = NSStackView(views: [nameRow, readings, noteLabel])
+        let hintText = NSMutableAttributedString(string: "Look for ", attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        hintText.append(NSAttributedString(string: "OBS Virtual Camera", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]))
+        hintText.append(NSAttributedString(string: " in your call app", attributes: [.font: NSFont.systemFont(ofSize: 12)]))
+        hintLabel.attributedStringValue = hintText
+        hintLabel.textColor = .secondaryLabelColor
+        // A quiet link: the faded words open the explanation.
+        whyButton.isBordered = false
+        whyButton.attributedTitle = NSAttributedString(string: "Why is it called that?", attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: NSColor.quaternaryLabelColor,
+        ])
+        whyButton.target = self
+        whyButton.action = #selector(whyChosen)
+        hint.orientation = .vertical
+        hint.alignment = .leading
+        hint.spacing = 1
+        hint.alphaValue = 0
+        hint.isHidden = true
+
+        let text = NSStackView(views: [nameRow, readings, hint, noteLabel])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 8
@@ -146,7 +172,8 @@ final class MenuHeaderView: NSView {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 16, bottom: 8, right: 16)
+        // The menu's own top padding is small, so the picture keeps clear of its rounded corner.
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 8, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
@@ -265,6 +292,7 @@ final class MenuHeaderView: NSView {
             fade(nameLabel, to: 0) { self.relayout() }
         }
         showReadings(content.phone, content.stats)
+        if content.cameraHint { fade(hint, to: 1) } else { fade(hint, to: 0) { self.relayout() } }
 
         // A gone note keeps its words while it fades out.
         if let text = content.note {
@@ -385,6 +413,8 @@ final class MenuHeaderView: NSView {
     }
 
     func clearPicture() { picture.clear() }
+
+    @objc private func whyChosen() { onWhy?() }
 }
 
 /// A red dot and the running clock on the live thumbnail, in a pill like the system's recording indicators.

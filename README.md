@@ -118,7 +118,7 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 - **Settings** has Launch at login, Start when the phone is plugged in, notifications, Phones over Wi-Fi and the Live Controls shortcut. Its Help section has **Copy Diagnostics**, which copies a plain-text report (versions, Mac, adb, OBS, the phone's model, setup steps and recent errors, with serial numbers taken out) to paste into a bug report, **Run Setup Again**, and **Check for Updates**, which asks GitHub for the newest release and links to it.
 
 <p align="center">
-  <img src="docs/assets/settings.png" width="380" alt="Settings: General, Phone, Live Controls shortcut and Help with Copy Diagnostics">
+  <img src="docs/assets/settings.png" width="480" alt="Settings, with General, Phone, Live Controls and Help in a sidebar">
   &nbsp;
   <img src="docs/assets/audio-sync.png" width="420" alt="Check Audio Sync: clap once and it says how far the video is behind the sound">
 </p>
@@ -126,6 +126,8 @@ Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose
 If the cable comes loose mid-call, the call keeps its camera and the picture comes back on its own when you plug the phone back in. If the phone runs hot, a notification offers to switch to 1080p at 30 fps.
 
 ### Why call apps say "OBS Virtual Camera"
+
+While you're live, the menu says which camera to pick, and its **Why is it called that?** link explains this too.
 
 The app sends its picture through OBS's camera, and OBS decides the name that call apps show. A camera of the app's own, named after your phone, needs a camera extension signed with a paid Apple Developer ID, which this project doesn't have yet.
 

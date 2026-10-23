@@ -671,9 +671,96 @@ struct SettingsView: View {
     @StateObject private var notificationsBlocked = StateBox(false)
     private var change: Animation? { Motion.allowed(Motion.stageChange) }
 
+    private enum Pane: String, CaseIterable, Identifiable {
+        case general = "General", phone = "Phone", liveControls = "Live Controls", help = "Help"
+        var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .general: return "gearshape.fill"
+            case .phone: return "smartphone"
+            case .liveControls: return "slider.horizontal.3"
+            case .help: return "questionmark.circle.fill"
+            }
+        }
+        var tint: Color {
+            switch self {
+            case .general: return .gray
+            case .phone: return .blue
+            case .liveControls: return .purple
+            case .help: return .green
+            }
+        }
+    }
+
+    @StateObject private var pane = StateBox(Pane.general)
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "General", symbol: "gearshape") {
+        HStack(spacing: 0) {
+            VStack(spacing: 2) {
+                ForEach(Pane.allCases) { item in
+                    let selected = pane.value == item
+                    Button { pane.value = item } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(width: 22, height: 22)
+                                .background(RoundedRectangle(cornerRadius: 5.5, style: .continuous).fill(item.tint.gradient))
+                            Text(item.rawValue).foregroundStyle(selected ? Color.white : Color.primary)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Color.accentColor : .clear))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.rawValue)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(width: 196)
+            .frame(maxHeight: .infinity)
+            .background(Color.primary.opacity(0.04))
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(pane.value.rawValue)
+                        .font(.title2.weight(.semibold))
+                        .padding(.leading, 4)
+                    paneContent
+                }
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 680, height: 460)
+        // Notes under a switch come and go on the same spring as Copied.
+        .animation(change, value: model.copy)
+        .animation(change, value: model.shortcutProblem)
+        .animation(change, value: model.update)
+        .animation(change, value: shortcut)
+        .animation(change, value: notifications && notificationsBlocked.value)
+        .animation(change, value: loginStatus.value)
+        .animation(change, value: loginError.value)
+        .onChange(of: notifications) { model.notificationsChanged($0); checkNotifications() }
+        .onChange(of: shortcut) { model.shortcutChanged($0) }
+        .onChange(of: wireless) { model.wirelessChanged($0) }
+        .onAppear(perform: checkNotifications)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginStatus.value = SMAppService.mainApp.status
+            checkNotifications()
+        }
+    }
+
+    @ViewBuilder private var paneContent: some View {
+        switch pane.value {
+        case .general:
+            SettingsGroup(title: "General") {
                 SettingToggle(title: "Launch at login", hint: "Puts \(appName) in the menu bar when you log in.",
                               isOn: Binding(get: { loginStatus.value == .enabled }, set: { setLaunchAtLogin($0) })) {
                     if loginStatus.value == .requiresApproval {
@@ -703,7 +790,8 @@ struct SettingsView: View {
                     }
                 }
             }
-            SettingsGroup(title: "Phone", symbol: "smartphone") {
+        case .phone:
+            SettingsGroup(title: "Phone") {
                 SettingToggle(title: "Phones over Wi-Fi",
                               hint: "Lists phones that have Wireless debugging on, next to the ones on USB. A cable keeps the phone charged and gives the steadiest picture.",
                               isOn: $wireless)
@@ -713,7 +801,8 @@ struct SettingsView: View {
                     Button("Connect…") { model.connectOverWiFi() }
                 }
             }
-            SettingsGroup(title: "Live Controls", symbol: "slider.horizontal.3") {
+        case .liveControls:
+            SettingsGroup(title: "Live Controls") {
                 SettingToggle(title: "Live Controls shortcut \(GlobalHotkey.label)",
                               hint: "Opens and closes Live Controls from any app, even a call in full screen.",
                               isOn: $shortcut, shownTitle: "Keyboard shortcut", keys: GlobalHotkey.keys) {
@@ -722,7 +811,8 @@ struct SettingsView: View {
                     }
                 }
             }
-            SettingsGroup(title: "Help", symbol: "questionmark.circle") {
+        case .help:
+            SettingsGroup(title: "Help") {
                 SettingAction(title: "Report a problem",
                               hint: "Copies the app and macOS versions, the phone model, setup and recent errors for a bug report. No serial numbers.") {
                     Button("Copy Diagnostics") { model.copyDiagnostics() }
@@ -745,24 +835,7 @@ struct SettingsView: View {
                 .font(.footnote).foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity)
-        }
-        .padding(22)
-        .frame(width: 440)
-        // Notes under a switch come and go on the same spring as Copied.
-        .animation(change, value: model.copy)
-        .animation(change, value: model.shortcutProblem)
-        .animation(change, value: model.update)
-        .animation(change, value: shortcut)
-        .animation(change, value: notifications && notificationsBlocked.value)
-        .animation(change, value: loginStatus.value)
-        .animation(change, value: loginError.value)
-        .onChange(of: notifications) { model.notificationsChanged($0); checkNotifications() }
-        .onChange(of: shortcut) { model.shortcutChanged($0) }
-        .onChange(of: wireless) { model.wirelessChanged($0) }
-        .onAppear(perform: checkNotifications)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            loginStatus.value = SMAppService.mainApp.status
-            checkNotifications()
+                .padding(.top, 4)
         }
     }
 
@@ -845,21 +918,14 @@ struct SettingsView: View {
 /// A rounded card with a small header, like Setup's step cards.
 private struct SettingsGroup<Content: View>: View {
     let title: String
-    let symbol: String
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(title, systemImage: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
-            VStack(alignment: .leading, spacing: 0) { content }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Card())
-        }
+        VStack(alignment: .leading, spacing: 0) { content }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Card())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
     }

@@ -174,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         let headerItem = NSMenuItem()
         headerItem.view = header
+        header.onWhy = { [weak self] in self?.explainCameraName() }
         menu.addItem(headerItem)
         menu.addItem(.separator())
         menu.addItem(mainAction)
@@ -638,6 +639,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 content.dot = .live
                 content.status = "Live \(time)"
                 content.picture = .init(badge: "LIVE")
+                content.cameraHint = true
                 content.note = note ?? holdNote
             } else if switchingLens {
                 content.status = "Switching camera"
@@ -1495,6 +1497,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func showSettings() {
         shelf.show("settings", title: "\(appName) Settings") { SettingsView(model: settingsModel) }
+    }
+
+    /// Why call apps list the camera as OBS Virtual Camera, from the menu header's link.
+    private func explainCameraName() {
+        menu.cancelTracking()
+        // After the menu has closed, so the alert comes up in front instead of under it.
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Why \u{201C}OBS Virtual Camera\u{201D}?"
+            alert.informativeText = """
+                \(appName) sends its picture through the virtual camera that OBS Studio installs, so call apps show \
+                OBS's name for it. OBS only has to be installed; it stays closed.
+
+                A camera with a name of its own, like your phone's, would mean \(appName) shipping its own camera \
+                extension. macOS only loads a camera extension that's signed by a paid Apple Developer ID, and this \
+                free project doesn't have one, so the name can't be changed.
+                """
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
     }
 
     /// Settings' Phones over Wi-Fi switch: the phone list follows at once, and paired phones connect while it's on.
