@@ -111,14 +111,16 @@ final class WindowShelf: NSObject, NSWindowDelegate {
 /// A button on a pending setup step that does the step, or most of it.
 enum SetupAction: Hashable {
     case open(String, URL)              // a button title and a web page or an app
-    case loginItems                     // System Settings > General > Login Items & Extensions
+    case cameraExtensions               // System Settings' Camera Extensions list, with OBS's switch
+    case turnOnCamera(URL)              // starts OBS hidden so macOS asks about its camera
     case quit(String, bundleID: String)
     case install(String, Installer)     // downloads and installs, in the dev instance too (into its own directory)
 
     var title: String {
         switch self {
         case let .open(title, _): title
-        case .loginItems: "Open Login Items & Extensions"
+        case .cameraExtensions: "Open Camera Extensions"
+        case .turnOnCamera: "Turn On OBS's Camera"
         case let .quit(title, _): title
         case let .install(title, _): title
         }
@@ -129,7 +131,8 @@ enum SetupAction: Hashable {
         if DevMode.isOn { DevMode.record("setup-action", title); return }
         switch self {
         case let .open(_, url): NSWorkspace.shared.open(url)
-        case .loginItems: SMAppService.openSystemSettingsLoginItems()
+        case .cameraExtensions: OBSSetup.openCameraExtensions()
+        case let .turnOnCamera(obs): OBSSetup.requestCamera(obs: obs)
         case let .quit(_, bundleID):
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) { app.terminate() }
         case .install: break
@@ -150,6 +153,16 @@ struct SetupStep: Identifiable, Equatable {
     var note: String? = nil             // a small line under the buttons
     var link: SetupAction? = nil        // a small link after the note
     var installer: Installer? = nil     // shows its download in place of the buttons while it runs
+    /// The app is doing this step by itself (a download, or waiting for one), so the user can move on to the next.
+    var working = false
+    var phone: PhoneGuideState? = nil   // the phone wizard, in place of the how-to, while this step is next
+}
+
+/// What the phone wizard shows.
+struct PhoneGuideState: Equatable {
+    let stage: PhoneSetupStage
+    let brand: PhoneBrand
+    let name: String?
 }
 
 final class SetupModel: ObservableObject {
@@ -157,9 +170,15 @@ final class SetupModel: ObservableObject {
     let platformTools = Installer(.platformTools)
     let obs = Installer(.obs)
     var doneCount: Int { steps.filter(\.done).count }
-    var nextStep: SetupStep? { steps.first { !$0.done } }
-    var complete: Bool { !steps.isEmpty && nextStep == nil }
+    /// The first step that waits on the user; steps the app is working on are skipped.
+    var nextStep: SetupStep? { steps.first { !$0.done && !$0.working } }
+    var complete: Bool { !steps.isEmpty && steps.allSatisfy(\.done) }
     var start: () -> Void = {}
+    /// Set Up for Me: downloads, installs and asks macOS to turn on OBS's camera, one after another.
+    @Published var canSetUpForMe = false
+    var setUpForMe: () -> Void = {}
+    /// The user says the phone is plugged in but the wizard still says to plug it in.
+    var phoneNotShowingUp: () -> Void = {}
     /// The tallest the window can be on its screen; the steps scroll past it.
     @Published var maxWindowHeight = CGFloat.infinity
     /// The screen Setup's window is on.
@@ -214,7 +233,8 @@ struct SetupView: View {
                     VStack(spacing: 8) {
                         ForEach(Array(model.steps.enumerated()), id: \.element.id) { index, step in
                             SetupStepCard(number: index + 1, step: step,
-                                          mark: step.done ? .done : step.id == model.nextStep?.id ? .next : .later)
+                                          mark: step.done ? .done : step.id == model.nextStep?.id ? .next : step.working ? .working : .later,
+                                          phoneNotShowingUp: model.phoneNotShowingUp)
                                 .id(step.id)
                         }
                     }
@@ -232,20 +252,25 @@ struct SetupView: View {
                         LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: scrolls ? 10 : 0)
                     }
                 }
-                // On a short screen, the step to do next comes into view when the one before it turns done.
-                .onChange(of: model.nextStep?.id) { id in
-                    guard let id else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        guard scrolls else { return }
-                        withAnimation(change) { scroller.scrollTo(id, anchor: .top) }
-                    }
-                }
+                // On a short screen, the step to do next comes into view when the one before it turns done, and when
+                // Setup opens or starts to scroll (after a relaunch, the next step may be the last one).
+                .onChange(of: model.nextStep?.id) { id in showNext(id, scroller) }
+                .onChange(of: scrolls) { _ in showNext(model.nextStep?.id, scroller) }
+                .onAppear { showNext(model.nextStep?.id, scroller) }
             }
             footer.background(HeightReader(box: footerHeight))
         }
         .padding(22)
         .frame(width: 470)
         .animation(change, value: model.steps)
+    }
+
+    private func showNext(_ id: String?, _ scroller: ScrollViewProxy) {
+        guard let id else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard scrolls else { return }
+            withAnimation(change) { scroller.scrollTo(id, anchor: .top) }
+        }
     }
 
     private var footer: some View {
@@ -270,6 +295,14 @@ struct SetupView: View {
     }
 
     private var hero: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            heroTitle
+            if model.canSetUpForMe { setUpForMe.transition(Motion.swap) }
+        }
+        .animation(change, value: model.canSetUpForMe)
+    }
+
+    private var heroTitle: some View {
         HStack(alignment: .center, spacing: 14) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
@@ -310,15 +343,37 @@ struct SetupView: View {
             .accessibilityElement(children: .combine)
         }
     }
+
+    /// The one click that does the Mac's part: shown until it's pressed or that part is done.
+    private var setUpForMe: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Let Setup do the Mac part").font(.callout.weight(.semibold))
+                Text("It downloads and installs Google's platform tools and OBS, then turns on OBS's camera. "
+                     + "You approve the camera once.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Set Up for Me") { model.setUpForMe() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.accentColor.opacity(0.1)))
+    }
 }
 
 /// One numbered step: done (a check, its result), next (open, with its buttons) or later (its title and what it's for).
 private struct SetupStepCard: View {
-    enum Mark { case done, next, later }
+    enum Mark { case done, next, working, later }
 
     let number: Int
     let step: SetupStep
     let mark: Mark
+    let phoneNotShowingUp: () -> Void
     @StateObject private var showHow = StateBox(false)
 
     var body: some View {
@@ -344,14 +399,14 @@ private struct SetupStepCard: View {
             .strokeBorder(mark == .next ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.06), lineWidth: 1))
         .accessibilityElement(children: .contain)
         // A group's value isn't read out, so the state goes in its label.
-        .accessibilityLabel("Step \(number), \(step.title), \(mark == .done ? "done" : mark == .next ? "do this next" : "not done yet")")
+        .accessibilityLabel("Step \(number), \(step.title), \(mark == .done ? "done" : mark == .next ? "do this next" : mark == .working ? "in progress" : "not done yet")")
     }
 
     private var fill: Color {
         switch mark {
         case .next: Color.accentColor.opacity(0.08)
         case .done: Color.primary.opacity(0.025)
-        case .later: Color.primary.opacity(0.04)
+        case .later, .working: Color.primary.opacity(0.04)
         }
     }
 
@@ -369,6 +424,9 @@ private struct SetupStepCard: View {
                 case .later:
                     Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
                     Text("\(number)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+                case .working:
+                    Circle().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1.5)
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
                 }
             }
             .id(mark)
@@ -381,7 +439,10 @@ private struct SetupStepCard: View {
     /// The how-to, buttons, extra help and note of a step that isn't done. A later step keeps only a download that's
     /// under way.
     @ViewBuilder private var pending: some View {
-        if mark == .next, !step.howTo.isEmpty { list(step.howTo, numbered: true) }
+        if mark == .next, let phone = step.phone {
+            PhoneGuideView(stage: phone.stage, brand: phone.brand, phoneName: phone.name, notShowingUp: phoneNotShowingUp)
+                .padding(.top, 4)
+        } else if mark == .next, !step.howTo.isEmpty { list(step.howTo, numbered: true) }
         if let installer = step.installer {
             InstallerControls(installer: installer, actions: step.actions, showIdle: mark == .next)
                 .padding(.top, 4)

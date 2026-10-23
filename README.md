@@ -4,7 +4,7 @@ Use your Android phone's camera as your Mac's webcam, over a USB cable. There's 
 
 <p align="center">
   <img src="docs/assets/live-controls.png" width="320" alt="Live Controls: lens chips, zoom, flashlight, exposure, white balance, focus and sharpening">
-  <img src="docs/assets/setup.png" width="470" alt="Setup walks you through six steps, each with a button that does the work">
+  <img src="docs/assets/setup.png" width="470" alt="Setup walks you through five steps and can do the Mac's part for you">
 </p>
 
 It has run live with a Galaxy S25 Ultra into a video call and a QuickTime recording. Most menu, setup, error and reconnect paths have also been driven against an Android emulator; [docs/phone-session.md](docs/phone-session.md) lists what still needs a real phone.
@@ -31,18 +31,19 @@ Each new version is a new unsigned build, so you do this again after an update.
 
 ## First run
 
-The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through six steps, each with a button that does the work. While Setup is open the app also has a Dock icon (it bounces when Setup is waiting behind another window), so you can get back to it from behind System Settings or OBS. When you close Setup the Dock icon goes, and macOS may say once that "Android Webcam" is running in the background: that's the menu bar app, as intended. On a fresh Mac it takes about 10 minutes, most of it in OBS's first launch.
+The app lives in the menu bar (a camera icon). The first time it opens, the setup window walks you through five steps. While Setup is open the app also has a Dock icon (it bounces when Setup is waiting behind another window), so you can get back to it from behind System Settings. When you close Setup the Dock icon goes, and macOS may say once that "Android Webcam" is running in the background: that's the menu bar app, as intended.
 
-1. **Get Android platform tools.** Click **Download Platform Tools**. It goes into the app's own folder in Application Support, nothing system-wide. The app turns off adb's wireless phone search, so macOS shouldn't ask about local networks; if it does (another tool started adb first), **Don't Allow** is fine, USB doesn't need it.
-2. **Install OBS Studio.** Click **Download OBS**. The app gets the latest release from OBS's GitHub page (about 150 MB), checks that the OBS Project signed it, and puts it in Applications. If you already have OBS, this step is done.
-3. **Turn on OBS's camera.** Click **Open OBS**. You only do this once.
-   - OBS's first launch shows a permissions window (click **Continue**; you don't need to grant anything) and an Auto-Configuration Wizard (click **Cancel**). You don't need to add anything in OBS.
-   - macOS asks to allow OBS's camera extension: click **Open System Settings** and turn on OBS. Click the switch once and wait; the password box takes a few seconds. If macOS doesn't ask, click **Start Virtual Camera** in OBS.
-   - If OBS then says it couldn't find the virtual camera and suggests a restart, click OK. You don't need to restart.
-   - Quit OBS. The app notices the camera is on, reopens itself once, and moves to the next step.
-4. **Plug in your phone** with a cable that carries data, not just power.
-5. **Allow USB debugging.** The phone asks whether to allow this Mac; tap **Allow**. If the phone doesn't show up or doesn't ask, USB debugging is off: **Show me how** in Setup lists the taps for Developer options.
-6. **Close OBS Studio.** The app and OBS can't both feed the camera. OBS can stay installed.
+Click **Set Up for Me** and the app does steps 1 to 3 by itself, except for one approval macOS asks you for. You can set up the phone while it downloads. Each step also has its own button if you'd rather go one at a time.
+
+1. **Get Android platform tools.** Google's adb, which talks to the phone. It goes into the app's own folder in Application Support, nothing system-wide. The app turns off adb's wireless phone search, so macOS shouldn't ask about local networks; if it does (another tool started adb first), **Don't Allow** is fine, USB doesn't need it.
+2. **Install OBS Studio.** The app gets the latest release from OBS's GitHub page (about 150 MB), checks that the OBS Project signed it, and puts it in Applications. If you already have OBS, this step is done.
+3. **Turn on OBS's camera.** The app starts OBS in the background (on a Mac where OBS has never run, it first sets OBS to skip its welcome windows). macOS asks about a new camera extension from OBS: click **Open System Settings**, click the switch next to OBS and type your password. If you closed that box, **Open Camera Extensions** in Setup gets you to the same switch. The app then quits OBS, reopens itself once, and moves on.
+4. **Connect your phone.** Setup watches the USB port and shows what to do next, with a little phone acting out the taps:
+   - Plug the phone in with a cable that carries data, not just power.
+   - Turn on Developer options: in **Settings › About phone** (on Samsung, then **Software information**), tap **Build number** 7 times and enter your PIN. This unlocks settings for app developers; the webcam needs one of them, USB debugging, to read the camera directly.
+   - In **Settings › Developer options** (on Samsung, at the bottom of Settings; on a Pixel, in **System**), turn on **USB debugging**.
+   - The phone asks "Allow USB debugging?": tick **Always allow from this computer** and tap **Allow**.
+5. **Close OBS Studio.** The app and OBS can't both feed the camera. OBS can stay installed.
 
 Then click **Start Webcam**. In Zoom, Meet, FaceTime, Teams or QuickTime, choose **OBS Virtual Camera** as the camera.
 

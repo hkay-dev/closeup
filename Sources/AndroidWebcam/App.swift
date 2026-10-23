@@ -58,6 +58,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var devicesKnown = false
     private var environmentKnown = false
     private var environmentCheckInProgress = false
+    /// Android phones on USB, debugging or not, from the last environment check.
+    private var usbPhones: [USBPhone] = []
+    /// The user said the phone is plugged in though nothing shows on USB (some hubs and cables hide it).
+    private var phoneNotShowingUp = false
+    /// Set Up for Me was clicked: Setup downloads, installs and turns on OBS's camera by itself.
+    private var setUpForMe = false
+    /// macOS has OBS's camera on, though this process may not see it until it reopens (see relaunchForExtension).
+    private var cameraApproved = false
     private var environmentTimer: Timer?
     private var captureActivity: NSObjectProtocol?
     /// Stream drops before this time come from the Mac sleeping, not the cable.
@@ -218,6 +226,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // A finished download shows up in Setup at once rather than at the next 3 s check.
         setup.platformTools.onInstalled = { [weak self] in self?.refreshEnvironment() }
         setup.obs.onInstalled = { [weak self] in self?.refreshEnvironment() }
+        setup.setUpForMe = { [weak self] in
+            guard let self else { return }
+            self.setUpForMe = true
+            self.setupChanged()
+        }
+        setup.phoneNotShowingUp = { [weak self] in
+            guard let self else { return }
+            self.phoneNotShowingUp = true
+            self.setupChanged()
+        }
         settingsModel.notificationsChanged = { [weak self] on in if on { self?.requestNotificationPermission() } }
         settingsModel.shortcutChanged = { [weak self] on in self?.setShortcut(on) }
         settingsModel.copyDiagnostics = { [weak self] in self?.copyDiagnostics() }
@@ -599,19 +617,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     // MARK: Discovery and setup
 
-    /// Checks for platform tools and the OBS extension off main. Skipped while capturing.
+    /// Checks for platform tools, the OBS extension and phones on USB off main. Skipped while capturing.
     private func refreshEnvironment() {
         guard !capture.running, !environmentCheckInProgress else { return }
         environmentCheckInProgress = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let adb = try? ADB.executable().path
             let extensionState = Installer.cameraState()
+            let usb = USBPhones.list()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.environmentCheckInProgress = false
                 self.environmentKnown = true
                 self.adbPath = adb
                 self.extensionActive = extensionState == .ready
+                // Approved, though this process may not see the camera until it reopens.
+                self.cameraApproved = extensionState != .missing
+                // A phone seen on USB and then unplugged goes back to "plug it in", even after "nothing happens".
+                if usb.isEmpty, !self.usbPhones.isEmpty { self.phoneNotShowingUp = false }
+                self.usbPhones = usb
                 self.setupChanged()
                 if extensionState == .staleInThisProcess { self.relaunchForExtension() }
             }
@@ -704,10 +728,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     private func setupChanged() {
+        driveSetUpForMe()
         updateSetup()
         autoStartIfNeeded()
         refreshUI()
         showSetupOnFirstRun()
+    }
+
+    /// Where the phone is in its half of Setup, from adb's list and what's on USB.
+    private func phoneGuide(phone: AndroidDevice?, allowed: AndroidDevice?) -> PhoneGuideState {
+        let usb = usbPhones.first { $0.debugging } ?? usbPhones.first
+        let stage: PhoneSetupStage
+        if allowed != nil {
+            stage = .ready
+        } else if phone != nil || usb?.debugging == true {
+            stage = .allow
+        } else if usb != nil || phoneNotShowingUp {
+            stage = .developerOptions
+        } else {
+            stage = .plugIn
+        }
+        let brand = usb?.brand ?? (phone?.model.hasPrefix("SM") == true ? .samsung : phone?.model.hasPrefix("Pixel") == true ? .google : .other)
+        // An unauthorized phone has no model in adb's list, only its serial, so the USB name reads better until it's allowed.
+        let name = allowed?.displayName ?? usb?.displayName ?? phone.flatMap { $0.model == $0.serial ? nil : $0.displayName }
+        return PhoneGuideState(stage: stage, brand: brand, name: name)
+    }
+
+    /// After Set Up for Me: starts each download that hasn't run, then OBS once it's in place so macOS asks about its
+    /// camera, and quits OBS again once the camera is on. A failed download waits for Try Again.
+    private func driveSetUpForMe() {
+        if cameraApproved { OBSSetup.quitRequested() }
+        guard setUpForMe else {
+            let canSetUp = environmentKnown && (adbPath == nil || !cameraApproved)
+            if setup.canSetUpForMe != canSetUp { setup.canSetUpForMe = canSetUp }
+            return
+        }
+        if setup.canSetUpForMe { setup.canSetUpForMe = false }
+        let obsURL = Installer.installedOBS()
+        if adbPath == nil, setup.platformTools.phase == .idle { setup.platformTools.start() }
+        if obsURL == nil, !cameraApproved, setup.obs.phase == .idle { setup.obs.start() }
+        if let obsURL, !cameraApproved, !OBSSetup.requested, !setup.obs.busy { OBSSetup.requestCamera(obs: obsURL) }
+        if adbPath != nil, cameraApproved { setUpForMe = false }
     }
 
     private func updateSetup() {
@@ -722,52 +783,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let obsInstalled = obsURL != nil || extensionActive
         // Without adb the phone list fails for that reason alone, which the first step already says.
         let phoneError = adbPath == nil ? nil : discoveryError
-        // Steps 4 and 5 share these: a phone without USB debugging never shows up, so step 4 waits until it's on.
-        let debuggingHowTo = ["On the phone, open Settings > About phone (on Samsung, then Software information) "
-                                + "and tap Build number seven times. Developer options appear.",
-                              "Open Settings > Developer options and turn on USB debugging.",
-                              "Plug the phone into the Mac. When the phone asks \"Allow USB debugging?\", "
-                                + "tick \"Always allow from this computer\" and tap Allow."]
+        let guide = phoneGuide(phone: phone, allowed: allowed)
+        let phoneHelp: String
+        let phoneNext: String
+        switch guide.stage {
+        case .ready:
+            phoneHelp = "\(guide.name ?? "Your phone") is connected."
+            phoneNext = ""
+        case .allow:
+            if phone == nil {
+                phoneHelp = "USB debugging is on. The phone asks to allow this Mac once platform tools are in."
+                phoneNext = "download Android platform tools in Setup."
+            } else {
+                phoneHelp = phone?.status == "unauthorized" ? "\(guide.name ?? "The phone") is plugged in. Tap Allow on it." : debugging.help
+                phoneNext = debugging.next
+            }
+        case .developerOptions:
+            phoneHelp = usbPhones.first.map { "\($0.displayName) is plugged in, but USB debugging is off. These steps turn it on; it takes a minute." }
+                ?? "These steps turn on USB debugging. If it's already on, try another cable: some only charge."
+            phoneNext = "turn on USB debugging on the phone."
+        case .plugIn:
+            phoneHelp = phoneError ?? "Plug your phone into this Mac with a USB cable."
+            phoneNext = phoneError ?? "plug in your phone with a USB cable."
+        }
         let steps = [
             SetupStep(id: "adb", title: "Get Android platform tools", done: adbPath != nil,
-                      help: adbPath != nil ? "Platform tools are ready." : "adb, a small tool from Google, talks to your phone.",
+                      help: adbPath != nil ? "Platform tools are ready."
+                        : setup.platformTools.busy ? "Setup is getting these for you." : "adb, a small tool from Google, talks to your phone.",
                       next: "download Android platform tools in Setup.",
                       actions: [.install("Download Platform Tools", setup.platformTools)],
                       note: "It comes from Google's Android SDK.",
                       link: .open("About platform tools", Installer.platformToolsPage),
-                      installer: setup.platformTools),
+                      installer: setup.platformTools, working: setup.platformTools.busy),
             SetupStep(id: "obs-install", title: "Install OBS Studio", done: obsInstalled,
                       help: obsURL != nil ? "OBS Studio is installed."
-                        : extensionActive ? "OBS's camera is already on." : "OBS gives your Mac the camera your call app will see.",
+                        : extensionActive ? "OBS's camera is already on."
+                        : setup.obs.busy ? "Setup is installing it for you." : "OBS gives your Mac the camera your call app will see.",
                       next: "install OBS Studio from Setup.",
                       actions: [.install("Download OBS", setup.obs)],
                       note: "Free and open source.",
                       link: .open("Get OBS from obsproject.com", Installer.obsPage),
-                      installer: setup.obs),
+                      installer: setup.obs, working: setup.obs.busy),
             SetupStep(id: "extension", title: "Turn on OBS's camera", done: extensionActive,
-                      help: extensionActive ? "It's on." : "macOS asks you once before OBS's camera can turn on.",
-                      next: "turn on OBS's camera.",
-                      actions: (obsURL.map { [SetupAction.open("Open OBS", $0)] } ?? []) + [.loginItems],
-                      howTo: ["Open OBS. The first time, click Continue on its permissions window (you don't need to "
-                                + "allow anything), then Cancel on its Auto-Configuration Wizard.",
-                              "When macOS asks about a camera extension, click Open System Settings. Turn on OBS there: "
-                                + "click the switch once, then wait for the password box.",
-                              "Quit OBS. You don't need to set anything up in it."],
-                      more: ["If macOS doesn't ask, click Start Virtual Camera in OBS, then Yes when it asks about video sources.",
-                             "If OBS then says it couldn't find the virtual camera, click OK. You don't need to restart."]),
-            SetupStep(id: "phone", title: "Plug in your phone", done: phone != nil,
-                      help: phone.map { "\($0.displayName) is plugged in." } ?? phoneError
-                        ?? "Use a USB cable that carries data. Some cables only charge.",
-                      next: phoneError ?? "plug in your phone with a USB cable.",
-                      tip: "Phone plugged in but not showing up? USB debugging has to be on first.",
-                      more: debuggingHowTo),
-            SetupStep(id: "debugging", title: "Allow USB debugging", done: allowed != nil,
-                      help: allowed.map { "Allowed on \($0.displayName)." } ?? debugging.help,
-                      next: debugging.next,
-                      more: debuggingHowTo),
-            // Done only once OBS is there: "OBS is closed" reads oddly before it's installed.
-            SetupStep(id: "obs", title: "Close OBS Studio", done: obsInstalled && !obsOpen,
-                      help: obsOpen ? "Quit OBS Studio while you use the webcam. It can stay installed."
+                      help: extensionActive ? "It's on."
+                        : OBSSetup.requested ? "macOS is asking you to turn it on."
+                        : setUpForMe ? (obsURL != nil ? "Starting OBS in the background…" : "Setup starts OBS for you once it's installed.")
+                        : "OBS adds a camera to your Mac. macOS asks you once before it turns on.",
+                      next: "turn on OBS's camera in System Settings.",
+                      actions: OBSSetup.requested ? [.cameraExtensions] : obsURL.map { [SetupAction.turnOnCamera($0)] } ?? [],
+                      howTo: (OBSSetup.requested ? [] : ["Click Turn On OBS's Camera. OBS starts in the background; you "
+                                                           + "don't need to do anything in it."])
+                        + ["macOS asks about a new camera extension from OBS. Click Open System Settings.",
+                           "Click the switch next to OBS, type your Mac's password and click OK.",
+                           "That's it: Setup sees the camera and closes OBS for you."],
+                      tip: OBSSetup.requested ? "Closed macOS's box by mistake? Open Camera Extensions gets you to the same switch."
+                        : nil,
+                      working: !OBSSetup.requested && (setUpForMe || obsURL == nil && setup.obs.busy)),
+            SetupStep(id: "phone", title: "Connect your phone", done: allowed != nil,
+                      help: phoneHelp, next: phoneNext, phone: guide),
+            // Done only once OBS is there: "OBS is closed" reads oddly before it's installed. The OBS that Setup started
+            // for its camera counts as closed, since Setup quits it.
+            SetupStep(id: "obs", title: "Close OBS Studio", done: obsInstalled && (!obsOpen || OBSSetup.requested),
+                      help: obsOpen && !OBSSetup.requested ? "Quit OBS Studio while you use the webcam. It can stay installed."
                         : obsInstalled ? "OBS is closed. It can stay installed."
                         : "Once OBS is installed, keep it closed while you use the webcam.",
                       next: "quit OBS Studio.",
