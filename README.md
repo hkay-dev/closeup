@@ -229,7 +229,7 @@ That builds the phone server into `build/scrcpy-server-webcam.jar`, then writes 
 SCRCPY_SERVER_PATH=build/scrcpy-server-webcam.jar ./scripts/build-app.sh
 ```
 
-`UNIVERSAL=1` builds one binary for Apple silicon and Intel, and `scripts/make-dmg.sh` packs the app into `build/Closeup.dmg`. CI builds on pushes to `main` and pull requests, and a `v*` tag publishes the DMG and a zip as a GitHub release, stamped with the tag's version.
+`UNIVERSAL=1` builds one binary for Apple silicon and Intel, and `scripts/make-dmg.sh` packs the app into `build/Closeup.dmg`. There's no CI: builds and releases run on the Mac.
 
 To walk the menu and every window without a VM and without anything showing on screen, run the app as an off-screen dev instance with `scripts/dev.sh`, and stand in for a phone with an emulator and `scripts/fault-adb`. See [docs/dev-automation.md](docs/dev-automation.md).
 

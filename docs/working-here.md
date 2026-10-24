@@ -9,4 +9,4 @@ summary: How to check a Closeup change, when the emulator or phone is allowed, a
 - **Devices:** the phone only after Harsha says go in chat, with the lease: `devlease take phone <you>`, then `adb -s "$(phone-connect)"`. If the lease says someone else holds the phone, stop. The checks that need it are in docs/phone-session.md.
 - **Emulator:** the AVD `Webcam_A` (`qm take emu <you>`) only for work that needs a phone stand-in (adb, lens, error journeys). A normal change needs no emulator.
 - **Ship:** none until the open-source release (kata:android-webcam#8ab9). The build stays in `build/`, so there is no `tend ship`.
-- **Quirks:** the dev instance runs off-screen and takes the desktop only for screenshots (`qm with desktop NAME -- ...`). Don't touch `.github/workflows/`.
+- **Quirks:** the dev instance runs off-screen and takes the desktop only for screenshots (`qm with desktop NAME -- ...`). No GitHub Actions, ever: Actions is off on the repo, and nobody adds `.github/workflows/`.
