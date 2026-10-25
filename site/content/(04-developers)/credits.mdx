@@ -1,0 +1,16 @@
+---
+title: Credits and license
+description: Closeup builds on scrcpy and OBS Studio, and it's licensed under Apache-2.0.
+sidebar:
+  label: Credits and license
+---
+
+## Credits
+
+- **[scrcpy](https://github.com/Genymobile/scrcpy/tree/v5.0.1)** by Genymobile and Romain Vimont. The bundled server is scrcpy 5.0.1, Apache-2.0, built from source with this project's patch in `server/webcam.patch`. Its license ships in the app's resources, and the repository's `NOTICE` lists the copyright. Its [5.0.1 server protocol](https://github.com/Genymobile/scrcpy/blob/v5.0.1/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java) is unchanged apart from this project's additions.
+- **[OBS Studio](https://obsproject.com)**, whose virtual camera carries the picture to call apps. Closeup doesn't bundle OBS. Setup downloads it from OBS's own GitHub releases.
+- The **[pyvirtualcam macOS backend](https://github.com/letmaik/pyvirtualcam/tree/main/pyvirtualcam/native_macos_obs_cmioextension)** documents the OBS sink-stream route. This app uses native CoreMediaIO APIs and doesn't include a Python runtime.
+
+## License
+
+Closeup is licensed under Apache-2.0. See [LICENSE](https://github.com/hkay-dev/closeup/blob/main/LICENSE) and [NOTICE](https://github.com/hkay-dev/closeup/blob/main/NOTICE) in the repository.

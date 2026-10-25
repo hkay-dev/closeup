@@ -1,0 +1,106 @@
+/* Closeup: warm gray with one signal orange, used sparingly. */
+
+:root {
+  --blume-foreground: #1c1b19;
+  --blume-muted: #e8e5df;
+  --blume-muted-foreground: #66615a;
+  --blume-border: #dad6ce;
+  --blume-accent-foreground: #ffffff;
+  --blume-code-background: #ebe8e2;
+
+  --closeup-body: #3d3a35;
+  /* The orange for fills (buttons, lines, bars). Text on it is the dark ink. */
+  --closeup-signal: #e8590c;
+  --closeup-signal-hover: #f26a1f;
+  --closeup-signal-ink: #1c1b19;
+  /* A fixed dark band, the same in both modes. */
+  --closeup-night: #1a1917;
+  --closeup-night-ink: #f2f0ec;
+  --closeup-night-body: #c9c4ba;
+  --closeup-glow: rgb(232 89 12 / 0.16);
+  --closeup-scroll: #cfcac1;
+}
+
+:root[data-theme="dark"] {
+  --blume-foreground: #f2f0ec;
+  --blume-muted: #262421;
+  --blume-muted-foreground: #a39e95;
+  --blume-border: #34312c;
+  --blume-accent-foreground: #1a1917;
+  --blume-code-background: #141311;
+
+  --closeup-body: #d6d2ca;
+  --closeup-signal: #f06418;
+  --closeup-signal-hover: #ff7a33;
+  --closeup-glow: rgb(240 100 24 / 0.22);
+  --closeup-scroll: #3d3a35;
+}
+
+/* Browser surfaces */
+::selection {
+  background: var(--closeup-glow);
+  color: var(--blume-foreground);
+}
+:root {
+  scrollbar-color: var(--closeup-scroll) transparent;
+  accent-color: var(--blume-accent);
+}
+:focus-visible {
+  outline-color: var(--blume-accent);
+  border-radius: 6px;
+}
+
+/* Geist wants a little less pinch than Blume's -0.05em. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.03em;
+}
+
+/* Read mode: a full-size body in a soft warm ink. */
+.prose {
+  color: var(--closeup-body);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.prose :where(h1, h2, h3, h4) {
+  font-weight: 600;
+}
+.prose :where(h1) {
+  font-size: 2.75rem;
+}
+.prose :where(h2) {
+  font-size: 1.625rem;
+}
+.prose :where(strong) {
+  color: var(--blume-foreground);
+  font-weight: 700;
+}
+.prose :where(a:not([data-blume-card])) {
+  text-decoration-color: color-mix(in oklab, var(--blume-accent) 70%, transparent);
+  text-decoration-style: solid;
+  text-decoration-thickness: 1.5px;
+  transition: color 150ms ease-out;
+}
+.prose :where(a:not([data-blume-card])):hover {
+  color: var(--blume-accent);
+}
+
+.prose :where(table) {
+  font-size: 0.9375rem;
+}
+
+/* The screenshots are macOS windows at 2x with transparent corners: keep them
+   near their real size and give them the window shadow they were cut from. */
+.prose :where(figure img) {
+  filter: drop-shadow(0 12px 28px rgb(28 27 25 / 0.16)) drop-shadow(0 1px 2px rgb(28 27 25 / 0.12));
+  margin-inline: auto;
+  max-height: 40rem;
+  width: auto;
+}
+:root[data-theme="dark"] .prose :where(figure img) {
+  filter: drop-shadow(0 14px 32px rgb(0 0 0 / 0.5)) drop-shadow(0 0 1px rgb(255 255 255 / 0.25));
+}

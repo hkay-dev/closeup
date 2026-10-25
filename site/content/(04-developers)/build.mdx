@@ -1,0 +1,45 @@
+---
+title: Build from source
+description: Build the phone server and the Mac app yourself with Xcode, a JDK 17 and the Android SDK.
+sidebar:
+  label: Build from source
+---
+
+## What you need
+
+- Xcode 15 or later, or its Command Line Tools (`xcode-select --install`). The script uses the selected Xcode. Set `DEVELOPER_DIR` to use another one.
+- A JDK 17 and the Android SDK's platform 36 and build-tools 36.0.0, to build the phone server. Android Studio's SDK Manager installs both.
+- Network access the first time, because the script clones scrcpy v5.0.1 from GitHub.
+
+Without Android Studio, you can get the JDK and the SDK with Homebrew:
+
+```sh
+brew install openjdk@17 android-commandlinetools
+export JAVA_HOME="$(brew --prefix openjdk@17)" ANDROID_HOME="$HOME/Library/Android/sdk"
+yes | sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-36" "build-tools;36.0.0"
+```
+
+## Build
+
+```sh
+./scripts/build-app.sh
+```
+
+That builds the phone server into `build/scrcpy-server-webcam.jar`, then writes the app to `build/Closeup.app` and signs it locally with an ad-hoc signature.
+
+To bundle a server jar that you already have instead of building it again, set `SCRCPY_SERVER_PATH`. Its version must be `5.0.1-webcam.1`:
+
+```sh
+SCRCPY_SERVER_PATH=build/scrcpy-server-webcam.jar ./scripts/build-app.sh
+```
+
+| Option | What it does |
+| --- | --- |
+| `UNIVERSAL=1` | Builds one binary for Apple silicon and Intel. |
+| `scripts/make-dmg.sh` | Packs the app into `build/Closeup.dmg`. |
+
+CI builds on pushes to `main` and on pull requests. A `v*` tag publishes the DMG and a zip as a GitHub release, stamped with the tag's version.
+
+## Run it without a phone
+
+To walk the menu and every window without a VM and without anything showing on screen, run the app as an off-screen dev instance with `scripts/dev.sh`. Stand in for a phone with an Android emulator and `scripts/fault-adb`. The repository's `docs/dev-automation.md` has the details.

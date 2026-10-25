@@ -1,0 +1,27 @@
+---
+title: Install
+description: Download Closeup, move it to Applications, and get past the macOS warning the first time you open it.
+---
+
+There's no signed download yet. Download `Closeup.dmg` from the [releases page](https://github.com/hkay-dev/closeup/releases), or [build it yourself](/build).
+
+<Steps>
+  <Step title="Copy the app">
+    Open the disk image, drag **Closeup** onto the **Applications** folder next to it, then eject the disk image. Open the app from Applications, not from the disk image or Downloads.
+  </Step>
+  <Step title="Try to open it once">
+    Double-click the app. macOS says "Closeup" Not Opened. Click **Done**.
+  </Step>
+  <Step title="Allow it in System Settings">
+    Open **System Settings › Privacy & Security** (scroll down the sidebar to find it), then scroll to the bottom of the page. Next to "Closeup" was blocked to protect your Mac, click **Open Anyway**. The button shows for about an hour after the last step.
+  </Step>
+  <Step title="Confirm">
+    In the Open "Closeup"? dialog, click **Open Anyway**. The password box takes a few seconds to appear. Enter your password. The app opens and Setup appears.
+  </Step>
+</Steps>
+
+:::note[Why macOS blocks it]
+The app is ad-hoc signed and not notarized, because the project doesn't have a paid Apple Developer ID yet. Each new version is a new unsigned build, so you do this again after an update.
+:::
+
+Next, [Setup](/setup) walks you through the rest.

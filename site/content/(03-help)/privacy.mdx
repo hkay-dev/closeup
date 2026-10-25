@@ -1,0 +1,28 @@
+---
+title: Privacy and your files
+description: Closeup sends video only, never records, and only goes online when you ask it to. Here's every file it writes.
+sidebar:
+  label: Privacy and files
+---
+
+## Privacy
+
+The app sends video only. It doesn't record, capture your screen or send anything to the Internet.
+
+- It only goes online for the two setup downloads that you click, and when you click **Check for Updates**, which asks GitHub for the newest release number.
+- It opens the microphone only while [Check Audio Sync](/audio-sync) runs, to time a clap, and keeps nothing.
+- It adds a login item only if you turn on **Launch at login**.
+
+## Where files go
+
+| Path | What it is |
+| --- | --- |
+| `~/Library/Application Support/Closeup/platform-tools/` | The adb that Setup downloads. |
+| `~/Library/Application Support/com.harsha.closeup/session.json` | What the last session started, so the next launch can clean up after a crash. |
+| `~/Library/Preferences/com.harsha.closeup.plist` | Settings. |
+| `~/Library/Caches/com.harsha.closeup` and `~/Library/HTTPStorages/com.harsha.closeup` | macOS's own download cache for Setup's downloads. |
+| `~/.android/adbkey` and `adbkey.pub` | adb's key, which your phone trusts. adb writes these, and any other Android tool on the Mac shares them. |
+| `/Applications/OBS.app` | OBS, if Setup installed it. |
+| `/data/local/tmp/closeup-*.jar` on the phone | The phone server while the webcam runs. The app removes it. |
+
+The app only cleans up what it created. It never stops the shared adb server, since other Android tools on the Mac may be using it.

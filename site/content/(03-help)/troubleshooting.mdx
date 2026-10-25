@@ -1,0 +1,46 @@
+---
+title: When something's wrong
+description: What to try when the phone isn't listed, the camera is busy, a mode won't run or the picture lags the sound.
+sidebar:
+  label: Troubleshooting
+---
+
+The menu says what happened and what to do next. These are the common ones.
+
+| You see | Try |
+| --- | --- |
+| The phone isn't listed | Use a data cable, unlock the phone and tap **Allow** on the USB debugging prompt. If it says "connecting", unplug it and plug it back in. |
+| "Another app on the phone is using the camera" | Close the phone's camera app or any video call on the phone, then start again. |
+| "The phone's camera can't …" this mode | Pick a lower [Capture Mode](/picture#capture-mode). |
+| Call apps don't list OBS Virtual Camera | Finish step 3 of [Setup](/setup), then quit and reopen the call app. |
+| The picture lags the sound | Run [Check Audio Sync](/audio-sync) and set that delay on the audio in your app. |
+
+## Report a problem
+
+<Steps>
+  <Step title="Copy the diagnostics">
+    In **Settings › Help**, click **Copy Diagnostics**. The report has the versions, the phone's model, the setup steps and recent errors, with serial numbers taken out.
+  </Step>
+  <Step title="Open an issue">
+    Open an issue at [github.com/hkay-dev/closeup/issues](https://github.com/hkay-dev/closeup/issues). The bug form asks for the phone and the diagnostics. Paste the report in.
+  </Step>
+</Steps>
+
+<Expandable title="Headless checks and logs">
+
+These don't create the menu bar item, open a window, start the phone's camera or publish to the virtual camera.
+
+```sh
+/Applications/Closeup.app/Contents/MacOS/Closeup --diagnose
+/Applications/Closeup.app/Contents/MacOS/Closeup --probe-hevc path/to/sample.hevc
+```
+
+`--diagnose` checks USB device discovery, the bundled server and the OBS extension's device identity. It also reports the Phones over Wi-Fi switch. `--probe-hevc` checks the hardware decoder with an Annex B HEVC sample.
+
+The app logs under the subsystem `com.harsha.closeup`:
+
+```sh
+log stream --level info --predicate 'subsystem == "com.harsha.closeup"'
+```
+
+</Expandable>

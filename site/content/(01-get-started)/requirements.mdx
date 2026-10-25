@@ -1,0 +1,22 @@
+---
+title: What you need
+description: A Mac on macOS 13 or later, an Android phone on Android 12 or later, a data cable and about 10 minutes.
+sidebar:
+  label: What you need
+---
+
+- **A Mac on macOS 13 or later.** Release builds run on Apple silicon and Intel Macs. Only Apple silicon has been tried so far.
+- **An Android phone on Android 12 or later**, and a USB cable that carries data. Some charging cables don't.
+- **About 10 minutes the first time.** Setup downloads the two free tools that it needs for you:
+  - **Android platform tools** from Google, which the Mac uses to talk to the phone (`adb`).
+  - **OBS Studio**, for its virtual camera. OBS only has to be installed. It stays closed while you use the webcam.
+
+## Phones
+
+Any phone on Android 12 or later with a back or front camera that Android's Camera2 API can open should work. The app checks the Android version and says so on older phones.
+
+Capture modes and lenses depend on the phone. A mode that the phone can't run shows an error instead of quietly switching to another one, and Live Controls lists the lenses that the phone reports.
+
+:::note[Tried on one phone so far]
+Closeup has run live on a Galaxy S25 Ultra only. If you try it on another phone, [open an issue](https://github.com/hkay-dev/closeup/issues) and say how it went.
+:::

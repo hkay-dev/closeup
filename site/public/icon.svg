@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Closeup</title>
+  <defs>
+    <linearGradient id="tile-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC56E"/>
+      <stop offset="0.55" stop-color="#FF8757"/>
+      <stop offset="1" stop-color="#EE4D6A"/>
+    </linearGradient>
+    <linearGradient id="tile-sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="phone-fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F3A78"/>
+      <stop offset="1" stop-color="#241A44"/>
+    </linearGradient>
+    <linearGradient id="bezel-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4D8C6"/>
+    </linearGradient>
+    <linearGradient id="barrel-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E2545"/>
+      <stop offset="1" stop-color="#141020"/>
+    </linearGradient>
+    <radialGradient id="glass-fill" cx="0.4" cy="0.36" r="0.72">
+      <stop offset="0" stop-color="#6A8BFF"/>
+      <stop offset="0.45" stop-color="#3B40BC"/>
+      <stop offset="1" stop-color="#170F3C"/>
+    </radialGradient>
+    <radialGradient id="pupil-fill" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#1E1754"/>
+      <stop offset="1" stop-color="#07051A"/>
+    </radialGradient>
+    <filter id="tile-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="12" result="blur"/>
+      <feFlood flood-color="#3A1020" flood-opacity="0.35"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="drop-shadow" x="-25%" y="-25%" width="150%" height="155%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="16"/>
+      <feOffset dy="18" result="blur"/>
+      <feFlood flood-color="#7A1E2E" flood-opacity="0.4"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Tile on the macOS icon grid: 824 x 824 with a 100 px margin -->
+  <g filter="url(#tile-shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile-fill)"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile-sheen)"/>
+
+  <!-- Phone back, tilted, with a lens that is far too big for it -->
+  <g transform="translate(16 0) rotate(-12 512 540)">
+    <g filter="url(#drop-shadow)">
+      <rect x="352" y="262" width="330" height="580" rx="74" fill="url(#phone-fill)"/>
+    </g>
+    <rect x="355" y="265" width="324" height="574" rx="71" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="6"/>
+    <g filter="url(#drop-shadow)">
+      <circle cx="500" cy="436" r="224" fill="url(#bezel-fill)"/>
+    </g>
+    <circle cx="500" cy="436" r="186" fill="url(#barrel-fill)"/>
+    <circle cx="500" cy="436" r="160" fill="url(#glass-fill)"/>
+    <circle cx="500" cy="436" r="160" fill="none" stroke="#8FA6FF" stroke-opacity="0.35" stroke-width="4"/>
+    <circle cx="500" cy="436" r="86" fill="url(#pupil-fill)"/>
+  </g>
+
+  <!-- Glints on the glass -->
+  <ellipse cx="430" cy="364" rx="58" ry="36" transform="rotate(-35 430 364)" fill="#FFFFFF" fill-opacity="0.92"/>
+  <circle cx="492" cy="330" r="14" fill="#FFFFFF" fill-opacity="0.85"/>
+
+  <!-- Sparkle -->
+  <path d="M 790 214 Q 796 248 830 254 Q 796 260 790 294 Q 784 260 750 254 Q 784 248 790 214 Z" fill="#FFFFFF" fill-opacity="0.9"/>
+</svg>

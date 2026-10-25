@@ -1,0 +1,35 @@
+---
+title: Capture mode and orientation
+description: Pick the resolution and frame rate, and tell Closeup how you're holding the phone.
+sidebar:
+  label: Capture mode and orientation
+---
+
+## Capture mode
+
+**Capture Mode** in the menu picks the resolution and frame rate. The default keeps the phone coolest.
+
+| Mode | Video from the phone | Notes |
+| --- | --- | --- |
+| 1080p at 30 fps | HEVC at 12 Mbps | The default, and the coolest for the phone |
+| 1080p at 60 fps | HEVC at 20 Mbps | |
+| 4K at 60 fps | HEVC at 40 Mbps | Still ran at 59 fps over Wi-Fi on a home network |
+| 1080p at 120 fps | High-speed capture at 40 Mbps | <Badge variant="warning">Experimental</Badge> |
+
+Phones differ. If yours can't run a mode, the app says so instead of quietly picking another one. Pick a lower mode and start again.
+
+:::note
+OBS's camera always tells call apps that it's 1080p at 60, even when it gets 4K frames. That's how the stock OBS extension works, and Closeup inherits it.
+:::
+
+## Orientation
+
+**Orientation** sets how you hold the phone.
+
+- **Landscape** (the default) is sideways.
+- **Portrait** is upright. Call apps always get a wide picture, so the tall picture sits between black bars.
+- **Auto-Rotate** follows the phone through all four turns, for walking around with it in your hand.
+
+Either way round works. The phone's motion sensor tells the app which way is up, so the picture never comes out upside down. A change shows in the live picture at once, from the menu or from [Live Controls](/live-controls).
+
+If Landscape is picked and you hold the phone upright, the menu and Live Controls point it out.
