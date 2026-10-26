@@ -93,7 +93,7 @@ Start Webcam, the lens, zoom and flashlight items, a hot phone and the error jou
 | `hang forward tcp:0`, `delay 8 scid=` | a hung adb at Start, Stop and Quit; a slow server start |
 | `track-exit` | adb not working |
 
-The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated) on port 5920, booted inside the `emu` line (repo `AGENTS.md`). Its camera 1 (Front) runs 1080p at 30 and 60; camera 0 (Back) can't run 1080p, which makes a lens switch that fails. Neither runs 4K or 120 fps, which drives the mode errors. `dumpsys battery set temp 450` makes it hot.
+The emulator is the AVD `Webcam_A` (Android 36, front and back cameras emulated) on port 5920, booted directly with `"$ANDROID_HOME/emulator/emulator" -avd Webcam_A -port 5920 -no-window` (repo `AGENTS.md`). Its camera 1 (Front) runs 1080p at 30 and 60; camera 0 (Back) can't run 1080p, which makes a lens switch that fails. Neither runs 4K or 120 fps, which drives the mode errors. `dumpsys battery set temp 450` makes it hot.
 
 ## README screenshots
 
