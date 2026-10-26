@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# `tend ship closeup` runs this: builds the committed HEAD with scripts/build-app.sh, quits the running
+# `deckhand ship run android-webcam` runs this: builds the committed HEAD with scripts/build-app.sh, quits the running
 # Closeup, replaces the installed app, relaunches it and writes the installed commit to
-# build/installed-commit. It never pushes; `tend ship` does that.
+# build/installed-commit. It never pushes; `deckhand ship run` does that.
 #
 # build-app.sh signs ad hoc, which macOS treats as a new app on every build. This re-signs the installed
 # copy with "Closeup Local Signing" (a self-signed certificate in the login keychain, made once like
