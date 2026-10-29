@@ -27,7 +27,9 @@ fi
 if gh release view "$version" -R "$repo" >/dev/null 2>&1; then fail "$version is already released"; fi
 
 UNIVERSAL=1 APP_VERSION="$version" APP_BUILD="$(git rev-list --count HEAD)" scripts/build-app.sh >/dev/null
-lipo -verify_arch build/Closeup.app/Contents/MacOS/Closeup arm64 x86_64 || fail "the app isn't universal"
+for arch in arm64 x86_64; do
+    lipo build/Closeup.app/Contents/MacOS/Closeup -verify_arch "$arch" || fail "the app has no $arch build"
+done
 scripts/make-dmg.sh build/Closeup.app build/Closeup.dmg >/dev/null
 rm -f build/Closeup.zip
 ditto -c -k --keepParent build/Closeup.app build/Closeup.zip
