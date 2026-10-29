@@ -1,0 +1,78 @@
+/* The home and download pages are always night: the icon's glow on a dark ground. */
+:root:root:has(.night) {
+  --ground: #0d0c12;
+  --ink: #f6f1ec;
+  --body: #cbc5d1;
+  --muted: #958fa1;
+  --rule: rgb(246 241 236 / 0.12);
+  --orange: #ff8757;
+  --amber: #ffc56e;
+  --pink: #ee4d6a;
+
+  --blume-background: var(--ground);
+  --blume-foreground: var(--ink);
+  --blume-muted-foreground: var(--muted);
+  --blume-muted: #1b1922;
+  --blume-border: var(--rule);
+  --closeup-selection: rgb(255 135 87 / 0.3);
+  --closeup-scroll: #34303d;
+  color-scheme: dark;
+}
+
+.night {
+  background: var(--ground);
+  color: var(--body);
+  font-family: var(--blume-font-body);
+  overflow: clip;
+}
+
+.night .btn {
+  align-items: center;
+  background: var(--orange);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px -10px rgb(255 135 87 / 0.7);
+  color: var(--ground);
+  display: inline-flex;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  min-height: 3.375rem;
+  padding: 0 1.875rem;
+  text-decoration: none;
+  transition:
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+.night .btn:hover {
+  background: var(--amber);
+  box-shadow: 0 14px 38px -10px rgb(255 197 110 / 0.75);
+}
+
+.night .docs {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  text-decoration-color: rgb(255 135 87 / 0.65);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.25em;
+  transition: color 150ms ease-out;
+}
+
+.night .docs:hover {
+  color: var(--amber);
+}
+
+.night .btn:focus-visible,
+.night .docs:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .night .btn,
+  .night .docs {
+    transition: none;
+  }
+}

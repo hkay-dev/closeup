@@ -7,6 +7,7 @@ import liveControlsShot from "../content/images/live-controls.png";
 import settingsShot from "../content/images/settings.png";
 import setupShot from "../content/images/setup.png";
 import GradientASCII from "../islands/GradientASCII.jsx";
+import "../styles/night.css";
 
 const { config } = data;
 
@@ -30,7 +31,7 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
     route: "/",
   }}
 >
-  <div class="landing">
+  <div class="landing night">
     <section class="hero" aria-labelledby="title">
       <div class="field" aria-hidden="true">
         <GradientASCII
@@ -58,7 +59,7 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
             Teams or QuickTime.
           </p>
           <div class="cta">
-            <a class="btn" href="/install">Download for Mac</a>
+            <a class="btn" href="/download">Download for Mac</a>
             <a class="docs" href="/introduction">Read the docs</a>
           </div>
           <p class="fine">Free and open source. Needs macOS 13 and Android 12 or later.</p>
@@ -183,7 +184,7 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
         <img src="/icon.svg" alt="" width="112" height="112" />
         <h2 id="finale-title">Free. Open source. Yours.</h2>
         <div class="cta">
-          <a class="btn" href="/install">Download for Mac</a>
+          <a class="btn" href="/download">Download for Mac</a>
           <a class="docs" href="https://github.com/hkay-dev/closeup">See the code</a>
         </div>
         <p class="fine">Apache-2.0. Needs macOS 13 and Android 12 or later.</p>
@@ -193,34 +194,6 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
 </PageLayout>
 
 <style>
-  /* The home page is always night: the icon's glow, drawn in ASCII, on a dark ground. */
-  :global(:root:root:has(.landing)) {
-    --ground: #0d0c12;
-    --ink: #f6f1ec;
-    --body: #cbc5d1;
-    --muted: #958fa1;
-    --rule: rgb(246 241 236 / 0.12);
-    --orange: #ff8757;
-    --amber: #ffc56e;
-    --pink: #ee4d6a;
-
-    --blume-background: var(--ground);
-    --blume-foreground: var(--ink);
-    --blume-muted-foreground: var(--muted);
-    --blume-muted: #1b1922;
-    --blume-border: var(--rule);
-    --closeup-selection: rgb(255 135 87 / 0.3);
-    --closeup-scroll: #34303d;
-    color-scheme: dark;
-  }
-
-  .landing {
-    background: var(--ground);
-    color: var(--body);
-    font-family: var(--blume-font-body);
-    overflow: clip;
-  }
-
   .field {
     inset: 0;
     position: absolute;
@@ -320,50 +293,6 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
     flex-wrap: wrap;
     gap: 0.75rem 1.75rem;
     margin-top: 2.25rem;
-  }
-
-  .btn {
-    align-items: center;
-    background: var(--orange);
-    border-radius: 999px;
-    box-shadow: 0 12px 32px -10px rgb(255 135 87 / 0.7);
-    color: var(--ground);
-    display: inline-flex;
-    font-size: 1.0625rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    min-height: 3.375rem;
-    padding: 0 1.875rem;
-    text-decoration: none;
-    transition:
-      background-color 160ms ease-out,
-      box-shadow 160ms ease-out;
-  }
-
-  .btn:hover {
-    background: var(--amber);
-    box-shadow: 0 14px 38px -10px rgb(255 197 110 / 0.75);
-  }
-
-  .btn:focus-visible,
-  .docs:focus-visible {
-    outline: 2px solid var(--amber);
-    outline-offset: 4px;
-  }
-
-  .docs {
-    color: var(--ink);
-    font-size: 1.0625rem;
-    font-weight: 500;
-    text-decoration-color: rgb(255 135 87 / 0.65);
-    text-decoration-line: underline;
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 0.25em;
-    transition: color 150ms ease-out;
-  }
-
-  .docs:hover {
-    color: var(--amber);
   }
 
   .live :global(img) {
@@ -600,13 +529,6 @@ const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
   @media (max-width: 520px) {
     .steps ol {
       grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .btn,
-    .docs {
-      transition: none;
     }
   }
 </style>

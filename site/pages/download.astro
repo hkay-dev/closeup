@@ -1,0 +1,449 @@
+---
+import { Image } from "astro:assets";
+import PageLayout from "blume/components/layout/PageLayout.astro";
+import data from "blume:data";
+import blockedShot from "../content/images/first-open-blocked.png";
+import "../styles/night.css";
+
+const { config } = data;
+
+const dmg = "https://github.com/hkay-dev/closeup/releases/latest/download/Closeup.dmg";
+const command = "xattr -dr com.apple.quarantine /Applications/Closeup.app";
+---
+
+<PageLayout
+  site={{ title: config.title, description: config.description }}
+  logo={config.logo}
+  banner={config.banner}
+  navigation={data.navigation}
+  favicon={config.favicon}
+  fontCssVars={data.fontCssVars}
+  themeMode={config.theme.mode}
+  searchEnabled={config.search.enabled}
+  page={{
+    title: "Download Closeup",
+    description: "Download Closeup for Mac, and get past the macOS block the first time you open it.",
+    route: "/download",
+  }}
+>
+  <div class="dl night" data-dmg={dmg}>
+    <header class="top">
+      <p class="lockup">
+        <img src="/icon.svg" alt="" width="56" height="56" />
+        <span>Closeup</span>
+      </p>
+      <h1>Closeup is downloading.</h1>
+      <p class="lede">
+        One thing before you open it: macOS blocks it the first time. Here’s why, and two ways past it. Either
+        one takes under a minute.
+      </p>
+      <p class="fine">
+        Didn’t start? <a class="docs" href={dmg}>Download Closeup.dmg</a>
+      </p>
+    </header>
+
+    <section class="why" aria-labelledby="why-title">
+      <div class="copy">
+        <h2 id="why-title">Why macOS stops it.</h2>
+        <p>
+          macOS opens an app from the internet without a fuss only when Apple has checked it, which needs a paid
+          Apple developer account. Closeup is free and doesn’t have one yet, so the first time you open it, macOS
+          can’t tell who made it and shows this instead.
+        </p>
+        <p>
+          Nothing’s wrong with the app. The <a class="docs" href="https://github.com/hkay-dev/closeup">code is
+          open</a>, and you can <a class="docs" href="/build">build it yourself</a>. You’ll do this once for each new
+          version.
+        </p>
+      </div>
+      <figure class="shot">
+        <Image
+          src={blockedShot}
+          width={259}
+          alt="The macOS warning: “Closeup” Not Opened. Apple could not verify “Closeup” is free of malware that may harm your Mac or compromise your privacy. Buttons: Done and Move to Trash."
+        />
+      </figure>
+    </section>
+
+    <section class="ways" aria-labelledby="ways-title">
+      <h2 id="ways-title">First, copy it to Applications.</h2>
+      <p class="sub">
+        Open <strong>Closeup.dmg</strong> and drag <strong>Closeup</strong> onto <strong>Applications</strong>. Then
+        pick one of these.
+      </p>
+
+      <div class="list">
+        <article class="way" aria-labelledby="way-terminal">
+          <div class="how">
+            <p class="tag">Quickest</p>
+            <h3 id="way-terminal">With Terminal</h3>
+            <p>
+              Open <strong>Terminal</strong> (it’s in Applications › Utilities), paste this and press Return. Then
+              open Closeup as usual.
+            </p>
+            <div class="cmd">
+              <code>{command}</code>
+              <button type="button" class="copy-btn" data-copy={command}>Copy</button>
+            </div>
+            <p class="note">
+              It takes off the mark that macOS puts on files from the internet, so macOS doesn’t check the app.
+            </p>
+          </div>
+          <video
+            class="clip"
+            src="/media/open-with-terminal.mp4"
+            poster="/media/open-with-terminal.jpg"
+            width="1340"
+            height="720"
+            autoplay
+            muted
+            loop
+            playsinline
+            controls
+            preload="metadata"
+            aria-label="Typing the command into Terminal, then opening Closeup from Applications, which opens to Setup"
+          ></video>
+        </article>
+
+        <article class="way" aria-labelledby="way-settings">
+          <div class="how">
+            <p class="tag">No Terminal</p>
+            <h3 id="way-settings">With System Settings</h3>
+            <ol>
+              <li>Double-click <strong>Closeup</strong>. On the warning, click <strong>Done</strong>.</li>
+              <li>Open <strong>System Settings › Privacy & Security</strong> and scroll to the bottom.</li>
+              <li>Next to “Closeup” was blocked, click <strong>Open Anyway</strong>.</li>
+              <li>Click <strong>Open Anyway</strong> again and enter your Mac’s password.</li>
+            </ol>
+          </div>
+          <video
+            class="clip"
+            src="/media/open-anyway.mp4"
+            poster="/media/open-anyway.jpg"
+            width="940"
+            height="732"
+            autoplay
+            muted
+            loop
+            playsinline
+            controls
+            preload="metadata"
+            aria-label="Opening Closeup, clicking Done on the warning, then Open Anyway in Privacy & Security and the password, after which Setup opens"
+          ></video>
+        </article>
+      </div>
+    </section>
+
+    <section class="next">
+      <p>Once it opens, Setup walks you through the rest.</p>
+      <div class="cta">
+        <a class="btn" href="/setup">What Setup does</a>
+        <a class="docs" href="/install">Install, step by step</a>
+      </div>
+    </section>
+  </div>
+</PageLayout>
+
+<script>
+  const page = document.querySelector<HTMLElement>(".dl");
+  // Start the download on a fresh visit, not on a reload or Back, so it isn't fetched again.
+  const visit = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  if (page?.dataset.dmg && (visit?.type ?? "navigate") === "navigate") {
+    setTimeout(() => (window.location.href = page.dataset.dmg!), 400);
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.dataset.copy!);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1600);
+    });
+  }
+
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    for (const clip of document.querySelectorAll<HTMLVideoElement>(".clip")) {
+      clip.removeAttribute("autoplay");
+      clip.pause();
+    }
+  }
+</script>
+
+<style>
+  .dl {
+    --page: 72rem;
+    --pad: clamp(1.25rem, 4vw, 3rem);
+  }
+
+  .dl > * {
+    margin-inline: auto;
+    max-width: var(--page);
+    padding-inline: var(--pad);
+  }
+
+  .top {
+    padding-block: clamp(3rem, 9svh, 5.5rem) clamp(2.5rem, 6svh, 4rem);
+  }
+
+  .lockup {
+    align-items: center;
+    color: var(--ink);
+    display: flex;
+    font-size: 1.75rem;
+    font-weight: 800;
+    gap: 0.875rem;
+    letter-spacing: -0.035em;
+    margin: 0 0 2rem;
+  }
+
+  .lockup img {
+    filter: drop-shadow(0 10px 24px rgb(255 135 87 / 0.35));
+  }
+
+  h1 {
+    color: var(--ink);
+    font-family: var(--blume-font-display);
+    font-size: clamp(2.75rem, 6.4vw, 5.75rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 0.95;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .lede {
+    font-size: clamp(1.125rem, 1rem + 0.35vw, 1.3125rem);
+    line-height: 1.55;
+    margin: 1.75rem 0 0;
+    max-width: 36rem;
+    text-wrap: pretty;
+  }
+
+  .fine {
+    color: var(--muted);
+    font-size: 0.9375rem;
+    margin: 1.25rem 0 0;
+  }
+
+  .fine .docs {
+    font-size: inherit;
+  }
+
+  h2 {
+    color: var(--ink);
+    font-family: var(--blume-font-display);
+    font-size: clamp(2rem, 3.8vw, 3.25rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  /* Why: the reason beside the warning itself, in a pool of the icon's pink. */
+  .why {
+    align-items: center;
+    border-top: 1px solid var(--rule);
+    column-gap: clamp(2.5rem, 6vw, 5rem);
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    padding-block: clamp(3rem, 8svh, 5rem);
+  }
+
+  .copy p,
+  .sub {
+    font-size: clamp(1.0625rem, 1rem + 0.2vw, 1.1875rem);
+    line-height: 1.6;
+    margin: 1.25rem 0 0;
+    max-width: 34rem;
+    text-wrap: pretty;
+  }
+
+  .copy .docs,
+  .sub .docs {
+    font-size: inherit;
+  }
+
+  .shot {
+    isolation: isolate;
+    justify-self: center;
+    margin: 0;
+    position: relative;
+  }
+
+  .shot::before {
+    background: radial-gradient(closest-side, rgb(238 77 106 / 0.42), rgb(238 77 106 / 0.12) 55%, transparent);
+    content: "";
+    inset: -30% -35%;
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+  }
+
+  .shot :global(img) {
+    display: block;
+    filter: drop-shadow(0 30px 40px rgb(0 0 0 / 0.6));
+    height: auto;
+    max-width: 100%;
+  }
+
+  /* The two ways, side by side, each with its own clip. */
+  .ways {
+    border-top: 1px solid var(--rule);
+    padding-block: clamp(3rem, 8svh, 5rem);
+  }
+
+  .sub strong,
+  .way strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .list {
+    display: grid;
+    gap: clamp(1.25rem, 3vw, 2rem);
+    margin-top: clamp(2rem, 5svh, 3rem);
+  }
+
+  /* Each way: the steps, then a clip as wide as the card so its text reads. */
+  .way {
+    background: #15131b;
+    border: 1px solid var(--rule);
+    border-radius: 1.25rem;
+    padding: clamp(1.25rem, 2.5vw, 2rem);
+  }
+
+  .how {
+    max-width: 40rem;
+  }
+
+  .way .tag {
+    color: var(--orange);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  h3 {
+    color: var(--ink);
+    font-family: var(--blume-font-display);
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0.375rem 0 0;
+  }
+
+  .way p,
+  .way ol {
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 1rem 0 0;
+  }
+
+  .way ol {
+    list-style: decimal;
+    padding-left: 1.25rem;
+  }
+
+  .way li + li {
+    margin-top: 0.375rem;
+  }
+
+  .way li::marker {
+    color: var(--orange);
+    font-weight: 700;
+  }
+
+  .note {
+    color: var(--muted);
+  }
+
+  .cmd {
+    align-items: center;
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    border-radius: 0.75rem;
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0.625rem 0.625rem 0.625rem 1rem;
+  }
+
+  .cmd code {
+    color: var(--amber);
+    flex: 1;
+    font-family: var(--blume-font-mono);
+    font-size: 0.875rem;
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  .copy-btn {
+    background: rgb(255 135 87 / 0.14);
+    border: 0;
+    border-radius: 0.5rem;
+    color: var(--orange);
+    cursor: pointer;
+    flex: none;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    min-width: 4.75rem;
+    padding: 0.5rem 0.875rem;
+    transition: background-color 150ms ease-out;
+  }
+
+  .copy-btn:hover {
+    background: rgb(255 135 87 / 0.24);
+  }
+
+  .copy-btn:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  .clip {
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    border-radius: 0.75rem;
+    display: block;
+    height: auto;
+    margin-top: 1.75rem;
+    max-width: 100%;
+  }
+
+  .next {
+    border-top: 1px solid var(--rule);
+    padding-block: clamp(3rem, 8svh, 5rem) clamp(4rem, 12svh, 7rem);
+  }
+
+  .next p {
+    color: var(--ink);
+    font-size: clamp(1.25rem, 1rem + 0.6vw, 1.625rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+
+  .cta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.75rem;
+    margin-top: 1.75rem;
+  }
+
+  @media (max-width: 900px) {
+    .why {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 3rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy-btn {
+      transition: none;
+    }
+  }
+</style>

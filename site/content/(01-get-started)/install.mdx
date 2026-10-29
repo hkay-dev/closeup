@@ -3,7 +3,7 @@ title: Install
 description: Download Closeup, move it to Applications, and get past the macOS warning the first time you open it.
 ---
 
-Download [Closeup.dmg](https://github.com/hkay-dev/closeup/releases/latest/download/Closeup.dmg) from the newest [release](https://github.com/hkay-dev/closeup/releases), or [build it yourself](/build). It isn't notarized yet, so macOS asks you to allow it the first time.
+Download [Closeup.dmg](https://github.com/hkay-dev/closeup/releases/latest/download/Closeup.dmg) from the newest [release](https://github.com/hkay-dev/closeup/releases), or [build it yourself](/build). It isn't notarized yet, so macOS blocks it the first time you open it. The [download page](/download) shows both ways past that in short clips.
 
 <Steps>
   <Step title="Copy the app">
@@ -19,6 +19,16 @@ Download [Closeup.dmg](https://github.com/hkay-dev/closeup/releases/latest/downl
     In the Open "Closeup"? dialog, click **Open Anyway**. The password box takes a few seconds to appear. Enter your password. The app opens and Setup appears.
   </Step>
 </Steps>
+
+## Or use Terminal
+
+After you copy the app, run this in Terminal instead of the last three steps, then open Closeup as usual:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Closeup.app
+```
+
+It takes off the mark that macOS puts on files from the internet, so macOS doesn't check the app.
 
 :::note[Why macOS blocks it]
 The app is ad-hoc signed and not notarized, because the project doesn't have a paid Apple Developer ID yet. Each new version is a new unsigned build, so you do this again after an update.
