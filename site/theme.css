@@ -1,66 +1,64 @@
-/* Closeup: warm gray with one signal orange, used sparingly. */
+/* Closeup: a white gallery wall, near-black ink, one indigo from the icon's lens.
+   Indigo goes only on what acts (buttons, links); one light source, from above. */
 
 :root {
-  --blume-foreground: #1c1b19;
-  --blume-muted: #e8e5df;
-  --blume-muted-foreground: #66615a;
-  --blume-border: #dad6ce;
+  --blume-foreground: #161616;
+  --blume-muted: #ebebe7;
+  --blume-muted-foreground: #64645f;
+  --blume-border: #e0e0db;
   --blume-accent-foreground: #ffffff;
-  --blume-code-background: #ebe8e2;
+  --blume-code-background: #ededea;
 
-  --closeup-body: #3d3a35;
-  /* The orange for fills (buttons, lines, bars). Text on it is the dark ink. */
-  --closeup-signal: #e8590c;
-  --closeup-signal-hover: #f26a1f;
-  --closeup-signal-ink: #1c1b19;
-  /* A fixed dark band, the same in both modes. */
-  --closeup-night: #1a1917;
-  --closeup-night-ink: #f2f0ec;
-  --closeup-night-body: #c9c4ba;
-  --closeup-glow: rgb(232 89 12 / 0.16);
-  --closeup-scroll: #cfcac1;
+  --closeup-body: #2e2e2c;
+  /* The spotlight on the wall, and the shadow it casts under a hung object. */
+  --closeup-light: #ffffff;
+  --closeup-shadow: rgb(22 22 20 / 0.18);
+  --closeup-shadow-near: rgb(22 22 20 / 0.16);
+  --closeup-selection: rgb(63 63 184 / 0.16);
+  --closeup-scroll: #cfcfca;
 }
 
 :root[data-theme="dark"] {
-  --blume-foreground: #f2f0ec;
-  --blume-muted: #262421;
-  --blume-muted-foreground: #a39e95;
-  --blume-border: #34312c;
-  --blume-accent-foreground: #1a1917;
-  --blume-code-background: #141311;
+  --blume-foreground: #ededea;
+  --blume-muted: #1f1f1e;
+  --blume-muted-foreground: #9b9b95;
+  --blume-border: #2b2b29;
+  --blume-accent-foreground: #111111;
+  --blume-code-background: #0e0e0e;
 
-  --closeup-body: #d6d2ca;
-  --closeup-signal: #f06418;
-  --closeup-signal-hover: #ff7a33;
-  --closeup-glow: rgb(240 100 24 / 0.22);
-  --closeup-scroll: #3d3a35;
+  --closeup-body: #d4d4cf;
+  --closeup-light: #222221;
+  --closeup-shadow: rgb(0 0 0 / 0.6);
+  --closeup-shadow-near: rgb(0 0 0 / 0.5);
+  --closeup-selection: rgb(148 148 247 / 0.24);
+  --closeup-scroll: #3a3a38;
 }
 
 /* Browser surfaces */
 ::selection {
-  background: var(--closeup-glow);
+  background: var(--closeup-selection);
   color: var(--blume-foreground);
 }
 :root {
   scrollbar-color: var(--closeup-scroll) transparent;
   accent-color: var(--blume-accent);
+  caret-color: var(--blume-accent);
 }
 :focus-visible {
   outline-color: var(--blume-accent);
   border-radius: 6px;
 }
 
-/* Geist wants a little less pinch than Blume's -0.05em. */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
-/* Read mode: a full-size body in a soft warm ink. */
+/* Read mode: a full-size body in a soft ink. */
 .prose {
   color: var(--closeup-body);
   font-size: 1rem;
@@ -77,12 +75,13 @@ h6 {
 }
 .prose :where(strong) {
   color: var(--blume-foreground);
-  font-weight: 700;
+  font-weight: 600;
 }
 .prose :where(a:not([data-blume-card])) {
-  text-decoration-color: color-mix(in oklab, var(--blume-accent) 70%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--blume-accent) 55%, transparent);
   text-decoration-style: solid;
-  text-decoration-thickness: 1.5px;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
   transition: color 150ms ease-out;
 }
 .prose :where(a:not([data-blume-card])):hover {
@@ -91,16 +90,17 @@ h6 {
 
 .prose :where(table) {
   font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The screenshots are macOS windows at 2x with transparent corners: keep them
-   near their real size and give them the window shadow they were cut from. */
+   near their real size, lit from above like everything else on the wall. */
 .prose :where(figure img) {
-  filter: drop-shadow(0 12px 28px rgb(28 27 25 / 0.16)) drop-shadow(0 1px 2px rgb(28 27 25 / 0.12));
+  filter: drop-shadow(0 14px 24px var(--closeup-shadow)) drop-shadow(0 1px 2px var(--closeup-shadow-near));
   margin-inline: auto;
   max-height: 40rem;
   width: auto;
 }
 :root[data-theme="dark"] .prose :where(figure img) {
-  filter: drop-shadow(0 14px 32px rgb(0 0 0 / 0.5)) drop-shadow(0 0 1px rgb(255 255 255 / 0.25));
+  filter: drop-shadow(0 14px 28px var(--closeup-shadow)) drop-shadow(0 0 1px rgb(255 255 255 / 0.22));
 }

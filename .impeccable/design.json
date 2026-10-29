@@ -1,0 +1,535 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T13:58:12+00:00",
+  "title": "Design System: Closeup",
+  "extensions": {
+    "colorMeta": {
+      "lens-indigo": {
+        "role": "primary",
+        "displayName": "Lens Indigo",
+        "canonical": "#3F3FB8",
+        "tonalRamp": [
+          "oklch(15% 0.028 276)",
+          "oklch(26% 0.061 276)",
+          "oklch(38% 0.103 276)",
+          "oklch(49% 0.146 276)",
+          "oklch(61% 0.183 276)",
+          "oklch(72% 0.140 276)",
+          "oklch(84% 0.098 276)",
+          "oklch(95% 0.056 276)"
+        ]
+      },
+      "lens-indigo-night": {
+        "role": "primary",
+        "displayName": "Lens Indigo, after hours",
+        "canonical": "#9494F7",
+        "tonalRamp": [
+          "oklch(15% 0.021 282)",
+          "oklch(26% 0.047 282)",
+          "oklch(38% 0.080 282)",
+          "oklch(49% 0.112 282)",
+          "oklch(61% 0.141 282)",
+          "oklch(72% 0.108 282)",
+          "oklch(84% 0.075 282)",
+          "oklch(95% 0.043 282)"
+        ]
+      },
+      "on-indigo": {
+        "role": "neutral",
+        "displayName": "On Indigo",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "on-indigo-night": {
+        "role": "neutral",
+        "displayName": "On Indigo, after hours",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "gallery-wall": {
+        "role": "neutral",
+        "displayName": "Gallery Wall",
+        "canonical": "#F5F5F2",
+        "tonalRamp": [
+          "oklch(15% 0.001 106)",
+          "oklch(26% 0.001 106)",
+          "oklch(38% 0.002 106)",
+          "oklch(49% 0.003 106)",
+          "oklch(61% 0.004 106)",
+          "oklch(72% 0.003 106)",
+          "oklch(84% 0.002 106)",
+          "oklch(95% 0.001 106)"
+        ]
+      },
+      "gallery-wall-night": {
+        "role": "neutral",
+        "displayName": "Gallery Wall, after hours",
+        "canonical": "#141414",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#161616",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Ink, after hours",
+        "canonical": "#EDEDEA",
+        "tonalRamp": [
+          "oklch(15% 0.001 106)",
+          "oklch(26% 0.001 106)",
+          "oklch(38% 0.002 106)",
+          "oklch(49% 0.003 106)",
+          "oklch(61% 0.004 106)",
+          "oklch(72% 0.003 106)",
+          "oklch(84% 0.002 106)",
+          "oklch(95% 0.001 106)"
+        ]
+      },
+      "body-ink": {
+        "role": "neutral",
+        "displayName": "Body Ink",
+        "canonical": "#2E2E2C",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.002 107)",
+          "oklch(49% 0.003 107)",
+          "oklch(61% 0.003 107)",
+          "oklch(72% 0.003 107)",
+          "oklch(84% 0.002 107)",
+          "oklch(95% 0.001 107)"
+        ]
+      },
+      "body-ink-night": {
+        "role": "neutral",
+        "displayName": "Body Ink, after hours",
+        "canonical": "#D4D4CF",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.002 107)",
+          "oklch(38% 0.004 107)",
+          "oklch(49% 0.005 107)",
+          "oklch(61% 0.007 107)",
+          "oklch(72% 0.005 107)",
+          "oklch(84% 0.004 107)",
+          "oklch(95% 0.002 107)"
+        ]
+      },
+      "label-gray": {
+        "role": "neutral",
+        "displayName": "Label Gray",
+        "canonical": "#64645F",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.003 107)",
+          "oklch(38% 0.004 107)",
+          "oklch(49% 0.006 107)",
+          "oklch(61% 0.008 107)",
+          "oklch(72% 0.006 107)",
+          "oklch(84% 0.004 107)",
+          "oklch(95% 0.002 107)"
+        ]
+      },
+      "label-gray-night": {
+        "role": "neutral",
+        "displayName": "Label Gray, after hours",
+        "canonical": "#9B9B95",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.003 107)",
+          "oklch(38% 0.005 107)",
+          "oklch(49% 0.007 107)",
+          "oklch(61% 0.009 107)",
+          "oklch(72% 0.007 107)",
+          "oklch(84% 0.005 107)",
+          "oklch(95% 0.003 107)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#E0E0DB",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.002 107)",
+          "oklch(38% 0.004 107)",
+          "oklch(49% 0.005 107)",
+          "oklch(61% 0.007 107)",
+          "oklch(72% 0.005 107)",
+          "oklch(84% 0.004 107)",
+          "oklch(95% 0.002 107)"
+        ]
+      },
+      "hairline-night": {
+        "role": "neutral",
+        "displayName": "Hairline, after hours",
+        "canonical": "#2B2B29",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.002 107)",
+          "oklch(49% 0.003 107)",
+          "oklch(61% 0.004 107)",
+          "oklch(72% 0.003 107)",
+          "oklch(84% 0.002 107)",
+          "oklch(95% 0.001 107)"
+        ]
+      },
+      "muted-wall": {
+        "role": "neutral",
+        "displayName": "Muted Wall",
+        "canonical": "#EBEBE7",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.002 107)",
+          "oklch(38% 0.003 107)",
+          "oklch(49% 0.004 107)",
+          "oklch(61% 0.005 107)",
+          "oklch(72% 0.004 107)",
+          "oklch(84% 0.003 107)",
+          "oklch(95% 0.002 107)"
+        ]
+      },
+      "muted-wall-night": {
+        "role": "neutral",
+        "displayName": "Muted Wall, after hours",
+        "canonical": "#1F1F1E",
+        "tonalRamp": [
+          "oklch(15% 0.000 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.001 107)",
+          "oklch(49% 0.001 107)",
+          "oklch(61% 0.002 107)",
+          "oklch(72% 0.001 107)",
+          "oklch(84% 0.001 107)",
+          "oklch(95% 0.001 107)"
+        ]
+      },
+      "code-wall": {
+        "role": "neutral",
+        "displayName": "Code Wall",
+        "canonical": "#EDEDEA",
+        "tonalRamp": [
+          "oklch(15% 0.001 106)",
+          "oklch(26% 0.001 106)",
+          "oklch(38% 0.002 106)",
+          "oklch(49% 0.003 106)",
+          "oklch(61% 0.004 106)",
+          "oklch(72% 0.003 106)",
+          "oklch(84% 0.002 106)",
+          "oklch(95% 0.001 106)"
+        ]
+      },
+      "code-wall-night": {
+        "role": "neutral",
+        "displayName": "Code Wall, after hours",
+        "canonical": "#0E0E0E",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "spotlight": {
+        "role": "neutral",
+        "displayName": "Spotlight",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "spotlight-night": {
+        "role": "neutral",
+        "displayName": "Spotlight, after hours",
+        "canonical": "#222221",
+        "tonalRamp": [
+          "oklch(15% 0.000 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.001 107)",
+          "oklch(49% 0.001 107)",
+          "oklch(61% 0.002 107)",
+          "oklch(72% 0.001 107)",
+          "oklch(84% 0.001 107)",
+          "oklch(95% 0.001 107)"
+        ]
+      },
+      "scroll-thumb": {
+        "role": "neutral",
+        "displayName": "Scroll Thumb",
+        "canonical": "#CFCFCA",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.002 107)",
+          "oklch(38% 0.004 107)",
+          "oklch(49% 0.005 107)",
+          "oklch(61% 0.007 107)",
+          "oklch(72% 0.005 107)",
+          "oklch(84% 0.004 107)",
+          "oklch(95% 0.002 107)"
+        ]
+      },
+      "scroll-thumb-night": {
+        "role": "neutral",
+        "displayName": "Scroll Thumb, after hours",
+        "canonical": "#3A3A38",
+        "tonalRamp": [
+          "oklch(15% 0.001 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.002 107)",
+          "oklch(49% 0.003 107)",
+          "oklch(61% 0.003 107)",
+          "oklch(72% 0.003 107)",
+          "oklch(84% 0.002 107)",
+          "oklch(95% 0.001 107)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Docs page titles."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Docs section headings."
+      },
+      "wall-label": {
+        "displayName": "Wall Label",
+        "purpose": "The landing page's label; one size, 600 for the name, 400 for the rest."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Docs prose in Body Ink."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "The numbered steps under the hero."
+      },
+      "table": {
+        "displayName": "Table",
+        "purpose": "Docs tables, tabular figures."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Code in the docs only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "hung-work",
+        "value": "drop-shadow(0 32px 36px rgb(22 22 20 / 0.18)) drop-shadow(0 2px 3px rgb(22 22 20 / 0.16))",
+        "purpose": "The landing page's panel, lit from above."
+      },
+      {
+        "name": "hung-work-night",
+        "value": "drop-shadow(0 32px 40px rgb(0 0 0 / 0.6)) drop-shadow(0 0 1px rgb(255 255 255 / 0.22))",
+        "purpose": "The panel after hours; the white rim separates the dark window from the dark wall."
+      },
+      {
+        "name": "hung-figure",
+        "value": "drop-shadow(0 14px 24px rgb(22 22 20 / 0.18)) drop-shadow(0 1px 2px rgb(22 22 20 / 0.16))",
+        "purpose": "Screenshots in docs."
+      },
+      {
+        "name": "hung-figure-night",
+        "value": "drop-shadow(0 14px 28px rgb(0 0 0 / 0.6)) drop-shadow(0 0 1px rgb(255 255 255 / 0.22))",
+        "purpose": "Screenshots in docs, after hours."
+      },
+      {
+        "name": "spotlight",
+        "value": "radial-gradient(closest-side, var(--closeup-light), color-mix(in oklab, var(--closeup-light) 55%, transparent) 40%, color-mix(in oklab, var(--closeup-light) 18%, transparent) 70%, transparent)",
+        "purpose": "The single light on the wall behind the hung panel; the site's only gradient."
+      }
+    ],
+    "motion": [
+      {
+        "name": "lights-up",
+        "value": "opacity 0 to 1, 1400ms cubic-bezier(0.16, 1, 0.3, 1), 120ms delay",
+        "purpose": "The spotlight comes up once on load; skipped under reduced motion."
+      },
+      {
+        "name": "link-color",
+        "value": "color 150ms ease-out",
+        "purpose": "Links turning indigo on hover."
+      },
+      {
+        "name": "button-fill",
+        "value": "background-color 160ms ease-out",
+        "purpose": "The Download button darkening on hover; off under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "steps-two-up",
+        "value": "900px"
+      },
+      {
+        "name": "hero-stacked",
+        "value": "760px"
+      },
+      {
+        "name": "steps-one-up",
+        "value": "520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Download Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled control: the landing page's Download for Mac.",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">Download for Mac</a>",
+      "css": ".ds-btn-primary { align-items: center; background: var(--blume-accent, #3F3FB8); border-radius: 6px; color: var(--blume-accent-foreground, #ffffff); display: inline-flex; font-family: Switzer, sans-serif; font-size: 1rem; font-weight: 500; min-height: 2.875rem; padding: 0 1.375rem; text-decoration: none; transition: background-color 160ms ease-out; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--blume-accent, #3F3FB8) 84%, var(--blume-foreground, #161616)); } .ds-btn-primary:focus-visible { outline: 2px solid var(--blume-accent, #3F3FB8); outline-offset: 3px; }"
+    },
+    {
+      "name": "Quiet Link",
+      "kind": "custom",
+      "refersTo": "link-quiet",
+      "description": "The secondary action and every docs link: ink text, indigo underline, indigo on hover.",
+      "html": "<a class=\"ds-link\" href=\"#\">Read the docs</a>",
+      "css": ".ds-link { color: var(--blume-foreground, #161616); font-family: Switzer, sans-serif; font-size: 1rem; text-decoration-line: underline; text-decoration-color: color-mix(in oklab, var(--blume-accent, #3F3FB8) 55%, transparent); text-decoration-thickness: 1px; text-underline-offset: 0.25em; transition: color 150ms ease-out; } .ds-link:hover { color: var(--blume-accent, #3F3FB8); } .ds-link:focus-visible { outline: 2px solid var(--blume-accent, #3F3FB8); outline-offset: 3px; border-radius: 6px; }"
+    },
+    {
+      "name": "Wall Label",
+      "kind": "custom",
+      "refersTo": "wall-label",
+      "description": "The landing page's call to action: one size, hierarchy by weight and ink.",
+      "html": "<div class=\"ds-label\"><h1>Closeup</h1><p class=\"ds-label-medium\">Android phone and Mac, 2026.</p><p>Your Android phone becomes your Mac's webcam. No app on the phone, no account, no cloud.</p><p class=\"ds-label-medium\">Free and open source. Needs macOS 13 and Android 12 or later.</p><div class=\"ds-label-cta\"><a class=\"ds-label-btn\" href=\"#\">Download for Mac</a><a class=\"ds-label-link\" href=\"#\">Read the docs</a></div></div>",
+      "css": ".ds-label { color: var(--closeup-body, #2E2E2C); font-family: Switzer, sans-serif; font-size: clamp(1.0625rem, 0.95rem + 0.3vw, 1.25rem); line-height: 1.5; max-width: 22rem; } .ds-label h1 { color: var(--blume-foreground, #161616); font: inherit; font-weight: 600; letter-spacing: 0; margin: 0; } .ds-label p { margin: 0; text-wrap: pretty; } .ds-label-medium { color: var(--blume-muted-foreground, #64645F); } .ds-label h1 + .ds-label-medium { margin-bottom: 1.25em; } .ds-label p:not(.ds-label-medium) + .ds-label-medium { margin-top: 1.25em; } .ds-label-cta { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; margin-top: 2rem; } .ds-label-btn { align-items: center; background: var(--blume-accent, #3F3FB8); border-radius: 6px; color: var(--blume-accent-foreground, #ffffff); display: inline-flex; font-size: 1rem; font-weight: 500; min-height: 2.875rem; padding: 0 1.375rem; text-decoration: none; transition: background-color 160ms ease-out; } .ds-label-btn:hover { background: color-mix(in oklab, var(--blume-accent, #3F3FB8) 84%, var(--blume-foreground, #161616)); } .ds-label-link { color: var(--blume-foreground, #161616); font-size: 1rem; text-decoration-color: color-mix(in oklab, var(--blume-accent, #3F3FB8) 55%, transparent); text-decoration-thickness: 1px; text-underline-offset: 0.25em; transition: color 150ms ease-out; } .ds-label-link:hover { color: var(--blume-accent, #3F3FB8); } .ds-label-btn:focus-visible, .ds-label-link:focus-visible { outline: 2px solid var(--blume-accent, #3F3FB8); outline-offset: 3px; }"
+    },
+    {
+      "name": "Step Labels",
+      "kind": "custom",
+      "refersTo": "step-label",
+      "description": "Numbered labels on the bare wall, a hairline rule on top of each.",
+      "html": "<ol class=\"ds-steps\"><li><strong>Plug in your phone.</strong> USB-C, or Wi-Fi once it's paired.</li><li><strong>Click Start Webcam.</strong> It's in the menu bar.</li><li><strong>Pick OBS Virtual Camera.</strong> In any app that asks for a camera.</li><li><strong>Tune the picture.</strong> Front or back, any lens, any way up.</li></ol>",
+      "css": ".ds-steps { counter-reset: step; display: grid; gap: 2rem clamp(1.5rem, 3vw, 3rem); grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; font-family: Switzer, sans-serif; } .ds-steps li { border-top: 1px solid var(--blume-border, #E0E0DB); color: var(--blume-muted-foreground, #64645F); counter-increment: step; font-size: 1rem; line-height: 1.55; padding-top: 1rem; text-wrap: pretty; } .ds-steps li::before { color: var(--blume-muted-foreground, #64645F); content: counter(step); display: block; font-variant-numeric: tabular-nums; margin-bottom: 0.75rem; } .ds-steps strong { color: var(--blume-foreground, #161616); display: block; font-weight: 600; }"
+    },
+    {
+      "name": "Hung Work",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "A real app screenshot hung on the wall: spotlight behind, shadow straight down, light comes up once on load.",
+      "html": "<figure class=\"ds-work\"><div class=\"ds-work-panel\" role=\"img\" aria-label=\"App panel\"></div></figure>",
+      "css": ".ds-work { margin: 0; position: relative; isolation: isolate; padding: 4rem; } .ds-work::before { aspect-ratio: 1; background: radial-gradient(closest-side, var(--closeup-light, #ffffff), color-mix(in oklab, var(--closeup-light, #ffffff) 55%, transparent) 40%, color-mix(in oklab, var(--closeup-light, #ffffff) 18%, transparent) 70%, transparent); content: \"\"; left: 50%; pointer-events: none; position: absolute; top: -40%; transform: translateX(-50%); width: 40rem; z-index: -1; } .ds-work-panel { width: 15rem; aspect-ratio: 0.4194; background: #fbfbfa; border-radius: 12px; filter: drop-shadow(0 32px 36px var(--closeup-shadow, rgb(22 22 20 / 0.18))) drop-shadow(0 2px 3px var(--closeup-shadow-near, rgb(22 22 20 / 0.16))); } @media (prefers-reduced-motion: no-preference) { .ds-work::before { animation: ds-lights-up 1400ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; } } @keyframes ds-lights-up { from { opacity: 0; } }"
+    },
+    {
+      "name": "Prose Body",
+      "kind": "card",
+      "refersTo": null,
+      "description": "A docs page in read mode: soft body ink, 600 headings, quiet links.",
+      "html": "<article class=\"ds-prose\"><h2>Pick the camera</h2><p>In your call app, choose <strong>OBS Virtual Camera</strong>. See <a href=\"#\">Troubleshooting</a> if it's missing.</p></article>",
+      "css": ".ds-prose { color: var(--closeup-body, #2E2E2C); font-family: Switzer, sans-serif; font-size: 1rem; line-height: 1.7; max-width: 40rem; } .ds-prose h2 { color: var(--blume-foreground, #161616); font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.5rem; } .ds-prose strong { color: var(--blume-foreground, #161616); font-weight: 600; } .ds-prose a { color: inherit; text-decoration-color: color-mix(in oklab, var(--blume-accent, #3F3FB8) 55%, transparent); text-decoration-thickness: 1px; text-underline-offset: 0.22em; transition: color 150ms ease-out; } .ds-prose a:hover { color: var(--blume-accent, #3F3FB8); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Single Work on a Gallery Wall",
+    "overview": "Closeup's site is a quiet room. The real app, its Live Controls panel at its true size, hangs on a matte white wall under one light, and a small wall label beside it says what it is, what it needs and how to get it. Nothing else competes. The visitor reads the label the way they'd read one in a gallery: name in a heavier weight, then a few plain lines, then the one thing to do.\n\nDensity is low and type is calm. The landing page gets almost all of its hierarchy from weight and ink, not size, and the docs pages keep that voice through tokens alone: same wall, same ink, same single indigo, same light from above. Dark mode isn't a different look. It's the same gallery after hours, with a dimmer wall and a dimmer spotlight.\n\nThe world rejects the dark gradient SaaS hero, the centered headline over a device mockup, and the old warm gray type poster it replaced.",
+    "keyCharacteristics": [
+      "Matte off-white wall and near-black ink, with a gray for secondary lines.",
+      "One indigo, taken from the icon's lens, only on things you can click.",
+      "One light source from above: a soft spotlight on the wall, every shadow cast downward.",
+      "Switzer for all text, Geist Mono for code.",
+      "Real screenshots at near their real size, never in device frames."
+    ],
+    "rules": [
+      {
+        "name": "The Lens Rule",
+        "body": "Indigo goes only on what acts: the Download button, links, focus and text selection. If you can't click it, it isn't indigo.",
+        "section": "colors"
+      },
+      {
+        "name": "The After Hours Rule",
+        "body": "Dark mode keeps every role and only dims the room. Never add a color in dark mode that light mode doesn't have.",
+        "section": "colors"
+      },
+      {
+        "name": "The Weight Not Size Rule",
+        "body": "On the landing page, hierarchy comes from weight and ink. The page's h1 is the same size as the sentence under it. Don't scale up a headline to make a point.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Face Rule",
+        "body": "Switzer for every word you read, Geist Mono only inside code.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Light Rule",
+        "body": "There's one light and it's above. Every shadow has zero x-offset and a positive y-offset; nothing glows, nothing lifts toward the viewer on hover.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Hung Object Rule",
+        "body": "Only things hung on the wall (real app windows and panels) get a shadow, and it's a drop-shadow filter that follows the window's own transparent corners, never a box-shadow on a frame.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep Lens Indigo on things that act: buttons, links, focus, selection.",
+      "**Do** build hierarchy on the landing page with weight (400 and 600) and ink (Ink, Body Ink, Label Gray) at one size.",
+      "**Do** show the real app at its real size, lit from above with the Hung Work or Hung Figure shadow.",
+      "**Do** cast every shadow straight down, and switch the contact shadow to the 1px white rim in dark mode.",
+      "**Do** theme docs pages through tokens only and leave Blume's layout alone.",
+      "**Do** let the spotlight come up once on load and skip it under reduced motion."
+    ],
+    "donts": [
+      "**Don't** use a dark gradient SaaS hero, a centered headline over a device mockup, or a warm gray type poster.",
+      "**Don't** add badges, chips, icon tiles or any gradient other than the spotlight.",
+      "**Don't** put a screenshot in a device frame or a box; its own corners are its shape.",
+      "**Don't** use indigo for decoration, headings, rules or backgrounds.",
+      "**Don't** add a second accent color, in either mode."
+    ]
+  }
+}

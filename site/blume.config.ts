@@ -11,13 +11,13 @@ export default defineConfig({
   },
 
   theme: {
-    accent: { light: "#B8420A", dark: "#F06418" },
-    background: { light: "#F2F0EC", dark: "#1A1917" },
-    radius: "lg",
+    accent: { light: "#3F3FB8", dark: "#9494F7" },
+    background: { light: "#F5F5F2", dark: "#141414" },
+    radius: "md",
     mode: "system",
     fonts: {
-      display: "geist",
-      body: "geist",
+      display: { name: "Switzer", provider: "fontshare", fallback: "sans", weights: [400, 500, 600] },
+      body: { name: "Switzer", provider: "fontshare", fallback: "sans", weights: [400, 500, 600] },
       mono: "geist-mono",
     },
   },

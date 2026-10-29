@@ -5,7 +5,6 @@ import data from "blume:data";
 import liveControlsShot from "../content/images/live-controls.png";
 
 const { config } = data;
-const github = "https://github.com/hkay-dev/closeup";
 ---
 
 <PageLayout
@@ -23,337 +22,287 @@ const github = "https://github.com/hkay-dev/closeup";
     route: "/",
   }}
 >
-  <div class="page">
-    <section aria-labelledby="title">
-      <h1 id="title">
-        <span>Plug in your phone.</span>
-        <span>Click <em>Start Webcam.</em></span>
-        <span>Pick <em>OBS Virtual Camera.</em></span>
-      </h1>
+  <div class="wall">
+    <section class="hero" aria-labelledby="title">
+      <figure class="work">
+        <Image
+          src={liveControlsShot}
+          width={320}
+          densities={[1, 2]}
+          loading="eager"
+          alt="Closeup's Live Controls panel: a Pixel 8 is ready, with a Start Webcam button and lens, zoom, flashlight, exposure, white balance and focus controls"
+        />
+      </figure>
 
-      <div class="intro">
-        <img src="/icon.svg" alt="" width="64" height="64" />
+      <div class="label">
+        <h1 id="title">Closeup</h1>
+        <p class="medium">Android phone and Mac, 2026.</p>
         <p>
-          That's <strong>Closeup</strong>. Your Android phone becomes your Mac's webcam in Zoom, Meet,
-          FaceTime, Teams or QuickTime. No app on the phone, no account, no cloud.
+          Your Android phone becomes your Mac's webcam in Zoom, Meet, FaceTime, Teams or QuickTime. No
+          app on the phone, no account, no cloud.
         </p>
+        <p class="medium">Free and open source. Needs macOS 13 and Android 12 or later.</p>
         <div class="cta">
-          <a class="btn" href="/install">Get started</a>
+          <a class="btn" href="/install">Download for Mac</a>
           <a class="docs" href="/introduction">Read the docs</a>
         </div>
       </div>
     </section>
 
-    <section class="points" aria-label="What you get">
-      <ul>
+    <section class="steps" aria-labelledby="steps-title">
+      <h2 id="steps-title">Your first call</h2>
+      <ol>
         <li>
-          <strong>Skip the expensive webcam.</strong> Why spend hundreds of dollars when your phone
-          already has terrific optics? Using it costs nothing.
+          <strong>Plug in your phone.</strong>
+          USB-C, or Wi-Fi once it's paired. Nothing to install on the phone.
         </li>
         <li>
-          <strong>Wired or wireless.</strong> USB is the steadiest. Wi-Fi has been great too: pair once
-          and it reconnects by itself.
+          <strong>Click Start Webcam.</strong>
+          It's in the menu bar. Setup walks you through the first time.
         </li>
         <li>
-          <strong>Every lens, any way up.</strong> Front or back camera, the ultra-wide instead of the
-          main lens, and landscape, portrait or auto-rotate.
+          <strong>Pick OBS Virtual Camera.</strong>
+          In Zoom, Meet, FaceTime, Teams, QuickTime or any app that asks for a camera.
         </li>
         <li>
-          <strong>As much picture as you want.</strong> From 1080p at 30 fps up to 4K at 60 and
-          40 Mbps. Want to push it to 120 fps? Sure. Just know your phone will run warm.
+          <strong>Tune the picture.</strong>
+          Front or back, any lens, any way up, from 1080p at 30 fps to 4K at 60.
         </li>
-      </ul>
-      <div class="shot">
-        <Image
-          src={liveControlsShot}
-          width={280}
-          densities={[1, 2]}
-          alt="Closeup's Live Controls panel, with lens, zoom, flashlight, exposure, white balance and focus controls"
-        />
-      </div>
-    </section>
-
-    <section class="faq" aria-labelledby="faq-title">
-      <h2 id="faq-title">Questions</h2>
-
-      <details>
-        <summary>Is it free?</summary>
-        <p>
-          Not only is it free, it's fully open source under Apache-2.0. <a href={github}>See the code on GitHub</a>.
-        </p>
-      </details>
-
-      <details>
-        <summary>How does it work?</summary>
-        <p>
-          Closeup joins two excellent open-source tools, <a href="https://github.com/Genymobile/scrcpy">scrcpy</a> and <a href="https://obsproject.com">OBS</a>,
-          into a virtual webcam that any app on your Mac
-          can pick, as long as it asks for a camera. <a href="/how-it-works">More on how it works</a>.
-        </p>
-      </details>
-
-      <details>
-        <summary>Why can't I rename the camera?</summary>
-        <p>
-          The picture goes through OBS's virtual camera, and OBS decides the name that apps show. A
-          camera with its own name needs a paid Apple Developer ID, which the project doesn't have yet.
-        </p>
-      </details>
-
-      <details>
-        <summary>What do I need?</summary>
-        <p>
-          A Mac on macOS 13 or later, an Android phone on Android 12 or later, and a USB cable that
-          carries data. <a href="/requirements">Full requirements</a>.
-        </p>
-      </details>
+      </ol>
     </section>
   </div>
 </PageLayout>
 
 <style>
-  .page {
-    margin: 0 auto;
-    max-width: 68rem;
-    padding: 7rem 1.5rem 7rem;
+  /* One wall, one light from above. */
+  .wall {
+    isolation: isolate;
+    overflow: clip;
+    padding: clamp(3rem, 8svh, 6rem) 1.5rem clamp(5rem, 12svh, 9rem);
   }
 
-  h1 {
-    color: var(--blume-foreground);
+  .hero {
+    align-items: center;
+    column-gap: clamp(3.5rem, 8vw, 8rem);
     display: grid;
-    font-family: var(--blume-font-display);
-    font-size: clamp(2.5rem, 6.4vw, 5.5rem);
-    font-weight: 600;
-    gap: 0.06em;
-    letter-spacing: -0.055em;
-    line-height: 1;
+    grid-template-columns: auto minmax(0, 22rem);
+    justify-content: center;
+    min-height: calc(100svh - 12rem);
+  }
+
+  .work {
     margin: 0;
+    position: relative;
   }
 
-  h1 em {
-    color: var(--blume-accent);
-    font-style: normal;
+  /* The spotlight on the wall, centered over the panel. */
+  .work::before {
+    aspect-ratio: 1;
+    background: radial-gradient(
+      closest-side,
+      var(--closeup-light),
+      color-mix(in oklab, var(--closeup-light) 55%, transparent) 40%,
+      color-mix(in oklab, var(--closeup-light) 18%, transparent) 70%,
+      transparent
+    );
+    content: "";
+    left: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: -40%;
+    transform: translateX(-50%);
+    width: min(140vw, 64rem);
+    z-index: -1;
   }
 
-  .intro {
-    align-items: start;
-    border-top: 2px solid var(--blume-foreground);
-    column-gap: 1.5rem;
-    display: grid;
-    grid-template-columns: 4rem minmax(0, 32rem) 1fr;
-    margin-top: 5rem;
-    padding-top: 2rem;
+  .work :global(img) {
+    display: block;
+    filter: drop-shadow(0 32px 36px var(--closeup-shadow)) drop-shadow(0 2px 3px var(--closeup-shadow-near));
+    height: auto;
+    width: clamp(15rem, calc((100svh - 13rem) * 0.4194), 20rem);
   }
 
-  .intro img {
-    height: 4rem;
-    width: 4rem;
+  :global(:root[data-theme="dark"]) .work :global(img) {
+    filter: drop-shadow(0 32px 40px var(--closeup-shadow)) drop-shadow(0 0 1px rgb(255 255 255 / 0.22));
   }
 
-  .intro p {
+  /* The wall label: one size, hierarchy by weight and ink. */
+  .label {
     color: var(--closeup-body);
-    font-size: 1.125rem;
-    line-height: 1.6;
+    font-size: clamp(1.0625rem, 0.95rem + 0.3vw, 1.25rem);
+    line-height: 1.5;
+  }
+
+  .label h1 {
+    color: var(--blume-foreground);
+    font-family: var(--blume-font-body);
+    font-size: inherit;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: inherit;
     margin: 0;
   }
 
-  .intro strong {
-    color: var(--blume-foreground);
+  .label p {
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  .label .medium {
+    color: var(--blume-muted-foreground);
+  }
+
+  .label h1 + .medium {
+    margin-bottom: 1.25em;
+  }
+
+  .label p:not(.medium) + .medium {
+    margin-top: 1.25em;
   }
 
   .cta {
     align-items: center;
     display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-    justify-self: end;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    margin-top: 2rem;
   }
 
   .btn {
     align-items: center;
-    background: var(--blume-foreground);
-    border-radius: 999px;
-    color: var(--blume-background);
+    background: var(--blume-accent);
+    border-radius: 6px;
+    color: var(--blume-accent-foreground);
     display: inline-flex;
-    font-family: var(--blume-font-display);
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 500;
-    min-height: 3.5rem;
-    padding: 0 2.25rem;
+    min-height: 2.875rem;
+    padding: 0 1.375rem;
     text-decoration: none;
     transition: background-color 160ms ease-out;
   }
 
   .btn:hover {
-    background: var(--blume-accent);
-    color: var(--blume-accent-foreground);
+    background: color-mix(in oklab, var(--blume-accent) 84%, var(--blume-foreground));
   }
 
-  a:not(.btn) {
-    text-decoration-line: underline;
-    color: var(--blume-foreground);
-    text-decoration-color: color-mix(in oklab, var(--blume-accent) 70%, transparent);
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 0.2em;
-  }
-
-  a:not(.btn):hover {
-    color: var(--blume-accent);
+  .btn:focus-visible,
+  .docs:focus-visible {
+    outline: 2px solid var(--blume-accent);
+    outline-offset: 3px;
   }
 
   .docs {
-    font-size: 0.9375rem;
+    color: var(--blume-foreground);
+    font-size: 1rem;
+    text-decoration-color: color-mix(in oklab, var(--blume-accent) 55%, transparent);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
+    transition: color 150ms ease-out;
   }
 
-  /* Four short points, with the real Live Controls panel beside them. */
-  .points {
-    align-items: center;
-    display: grid;
-    gap: 4rem;
-    grid-template-columns: minmax(0, 1fr) auto;
-    margin-top: 8rem;
+  .docs:hover {
+    color: var(--blume-accent);
   }
 
-  .points ul {
+  /* Four small labels in the order a first call happens. */
+  .steps {
+    margin: clamp(4rem, 10svh, 7rem) auto 0;
+    max-width: 68rem;
+  }
+
+  .steps h2 {
+    color: var(--blume-foreground);
+    font-family: var(--blume-font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    margin: 0 0 1.5rem;
+  }
+
+  .steps ol {
+    counter-reset: step;
     display: grid;
-    gap: 1.75rem;
+    gap: 2rem clamp(1.5rem, 3vw, 3rem);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     list-style: none;
     margin: 0;
     padding: 0;
   }
 
-  .points li {
-    border-left: 2px solid var(--blume-border);
-    color: var(--closeup-body);
-    font-size: 1.1875rem;
-    line-height: 1.55;
-    max-width: 36rem;
-    padding-left: 1.25rem;
-  }
-
-  .points li strong {
-    color: var(--blume-foreground);
-    font-weight: 600;
-  }
-
-  .shot :global(img) {
-    display: block;
-    filter: drop-shadow(0 24px 40px rgb(28 27 25 / 0.2)) drop-shadow(0 1px 2px rgb(28 27 25 / 0.14));
-    height: auto;
-    max-width: 100%;
-  }
-
-  :global(:root[data-theme="dark"]) .shot :global(img) {
-    filter: drop-shadow(0 24px 44px rgb(0 0 0 / 0.55)) drop-shadow(0 0 1px rgb(255 255 255 / 0.25));
-  }
-
-  /* FAQ */
-  .faq {
-    margin-top: 8rem;
-    max-width: 44rem;
-  }
-
-  .faq h2 {
-    color: var(--blume-foreground);
-    font-family: var(--blume-font-display);
-    font-size: clamp(1.75rem, 3vw, 2.25rem);
-    font-weight: 600;
-    letter-spacing: -0.04em;
-    margin: 0 0 1.5rem;
-  }
-
-  details {
+  .steps li {
     border-top: 1px solid var(--blume-border);
-  }
-
-  details:last-of-type {
-    border-bottom: 1px solid var(--blume-border);
-  }
-
-  summary {
-    align-items: center;
-    color: var(--blume-foreground);
-    cursor: pointer;
-    display: flex;
-    font-size: 1.25rem;
-    font-weight: 500;
-    justify-content: space-between;
-    letter-spacing: -0.02em;
-    list-style: none;
-    padding: 1.25rem 0;
-  }
-
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  /* A plus that turns into a cross when open. */
-  summary::after {
-    display: inline-block;
     color: var(--blume-muted-foreground);
-    content: "+";
-    font-size: 1.5rem;
-    font-weight: 300;
-    line-height: 1;
-    transition: transform 200ms ease-out;
+    counter-increment: step;
+    font-size: 1rem;
+    line-height: 1.55;
+    padding-top: 1rem;
+    text-wrap: pretty;
   }
 
-  details[open] summary::after {
-    transform: rotate(45deg);
+  .steps li::before {
+    color: var(--blume-muted-foreground);
+    content: counter(step);
+    display: block;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 0.75rem;
   }
 
-  summary:focus-visible {
-    outline: 2px solid var(--blume-accent);
-    outline-offset: 2px;
+  .steps strong {
+    color: var(--blume-foreground);
+    display: block;
+    font-weight: 600;
   }
 
-  details p {
-    color: var(--closeup-body);
-    font-size: 1.0625rem;
-    line-height: 1.65;
-    margin: 0 0 1.5rem;
-    max-width: 38rem;
+  /* The light comes up once, over a page that's readable from the first frame. */
+  @media (prefers-reduced-motion: no-preference) {
+    .work::before {
+      animation: lights-up 1400ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+    }
+
+    @keyframes lights-up {
+      from {
+        opacity: 0;
+      }
+    }
   }
 
-  @media (max-width: 860px) {
-    .page {
-      padding-top: 4.5rem;
+  @media (max-width: 900px) {
+    .steps ol {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .hero {
+      grid-template-columns: minmax(0, 22rem);
+      min-height: 0;
+      row-gap: 3.5rem;
     }
 
-    .intro {
-      grid-template-columns: 3rem minmax(0, 1fr);
-      row-gap: 2rem;
-    }
-
-    .intro img {
-      height: 3rem;
-      width: 3rem;
-    }
-
-    .cta {
-      align-items: start;
-      grid-column: 1 / -1;
-      justify-self: start;
-    }
-
-    .points {
-      gap: 3rem;
-      grid-template-columns: minmax(0, 1fr);
-      margin-top: 5rem;
-    }
-
-    .shot {
+    .work {
       justify-self: center;
     }
 
-    .faq {
-      margin-top: 5rem;
+    .work :global(img) {
+      width: min(17.5rem, 72vw);
+    }
+
+    .work::before {
+      top: -35%;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .steps ol {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .btn,
-    summary::after {
+    .docs {
       transition: none;
     }
   }
