@@ -1079,6 +1079,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                            "That's it: Setup sees the camera and closes OBS for you."],
                       tip: OBSSetup.requested ? "Closed macOS's box by mistake? Open Camera Extensions gets you to the same switch."
                         : nil,
+                      link: ClipWindow.url("obs-camera").map { .watch("How to Turn On OBS's Camera", $0) },
                       working: !OBSSetup.requested && (setUpForMe || obsURL == nil && setup.obs.busy)),
             SetupStep(id: "phone", title: "Connect your phone", done: allowed != nil,
                       help: phoneHelp, next: phoneNext, phone: guide),

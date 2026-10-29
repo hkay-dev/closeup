@@ -134,6 +134,7 @@ enum SetupAction: Hashable {
     case turnOnCamera(URL)              // starts OBS hidden so macOS asks about its camera
     case quit(String, bundleID: String)
     case install(String, Installer)     // downloads and installs, in the dev instance too (into its own directory)
+    case watch(String, URL)             // a window title and a bundled clip of the step (ClipWindow)
 
     var title: String {
         switch self {
@@ -142,6 +143,7 @@ enum SetupAction: Hashable {
         case .turnOnCamera: "Turn On OBS's Camera"
         case let .quit(title, _): title
         case let .install(title, _): title
+        case .watch: "Watch how it's done"
         }
     }
 
@@ -155,6 +157,7 @@ enum SetupAction: Hashable {
         case let .quit(_, bundleID):
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) { app.terminate() }
         case .install: break
+        case let .watch(title, clip): ClipWindow.show(clip, title: title)
         }
     }
 }

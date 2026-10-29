@@ -8,7 +8,7 @@ let package = Package(
     targets: [.executableTarget(
         name: "Closeup",
         linkerSettings: [
-            .linkedFramework("AppKit"), .linkedFramework("AVFoundation"),
+            .linkedFramework("AppKit"), .linkedFramework("AVFoundation"), .linkedFramework("AVKit"),
             .linkedFramework("CoreMedia"), .linkedFramework("CoreMediaIO"),
             .linkedFramework("CoreVideo"), .linkedFramework("VideoToolbox")
         ]
