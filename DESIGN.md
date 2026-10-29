@@ -1,228 +1,289 @@
 ---
 name: Closeup
-description: Your Android phone as your Mac's webcam, shown like a single work on a white gallery wall.
+description: Your Android phone as your Mac's webcam, told in heavy type over the icon's glow on a night ground.
 colors:
-  lens-indigo: "#3F3FB8"
-  lens-indigo-night: "#9494F7"
-  on-indigo: "#FFFFFF"
-  on-indigo-night: "#111111"
-  gallery-wall: "#F5F5F2"
-  gallery-wall-night: "#141414"
-  ink: "#161616"
-  ink-night: "#EDEDEA"
-  body-ink: "#2E2E2C"
-  body-ink-night: "#D4D4CF"
-  label-gray: "#64645F"
-  label-gray-night: "#9B9B95"
-  hairline: "#E0E0DB"
-  hairline-night: "#2B2B29"
-  muted-wall: "#EBEBE7"
-  muted-wall-night: "#1F1F1E"
-  code-wall: "#EDEDEA"
-  code-wall-night: "#0E0E0E"
-  spotlight: "#FFFFFF"
-  spotlight-night: "#222221"
-  scroll-thumb: "#CFCFCA"
-  scroll-thumb-night: "#3A3A38"
+  night-ground: "#0D0C12"
+  night-ink: "#F6F1EC"
+  night-body: "#CBC5D1"
+  night-muted: "#958FA1"
+  night-rule: "rgb(246 241 236 / 0.12)"
+  night-raised: "#1B1922"
+  night-scroll: "#34303D"
+  icon-orange: "#FF8757"
+  icon-amber: "#FFC56E"
+  icon-pink: "#EE4D6A"
+  icon-indigo: "#3B40BC"
+  docs-accent: "#C23A1C"
+  on-docs-accent: "#FFFFFF"
+  docs-paper: "#F5F5F2"
+  docs-ink: "#161616"
+  docs-ink-night: "#F3EEE9"
+  docs-body: "#2E2E2C"
+  docs-body-night: "#D6D1DA"
+  docs-muted: "#64645F"
+  docs-muted-night: "#A29DAB"
+  docs-border: "#E0E0DB"
+  docs-border-night: "#26232F"
+  docs-surface: "#EBEBE7"
+  docs-code: "#EDEDEA"
+  docs-code-night: "#08070C"
+  docs-scroll: "#CFCFCA"
 typography:
-  display:
-    fontFamily: "Switzer, sans-serif"
+  hero-statement:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(3.25rem, 7.4vw, 7.25rem)"
+    fontWeight: 800
+    lineHeight: 0.92
+    letterSpacing: "-0.045em"
+  big-statement:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(3rem, 9vw, 9rem)"
+    fontWeight: 800
+    lineHeight: 0.9
+    letterSpacing: "-0.05em"
+  section-statement:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(2.5rem, 5.4vw, 5rem)"
+    fontWeight: 800
+    lineHeight: 0.95
+    letterSpacing: "-0.045em"
+  step-numeral:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(3.5rem, 5vw, 4.75rem)"
+    fontWeight: 800
+    lineHeight: 1
+    letterSpacing: "-0.05em"
+    fontFeature: "\"tnum\""
+  wordmark:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(1.75rem, 2.4vw, 2.25rem)"
+    fontWeight: 800
+    letterSpacing: "-0.035em"
+  docs-display:
+    fontFamily: "Timeless Sans, sans-serif"
     fontSize: "2.75rem"
-    fontWeight: 600
+    fontWeight: 700
     letterSpacing: "-0.02em"
-  headline:
-    fontFamily: "Switzer, sans-serif"
+  docs-headline:
+    fontFamily: "Timeless Sans, sans-serif"
     fontSize: "1.625rem"
-    fontWeight: 600
+    fontWeight: 700
     letterSpacing: "-0.02em"
-  wall-label:
-    fontFamily: "Switzer, sans-serif"
-    fontSize: "clamp(1.0625rem, 0.95rem + 0.3vw, 1.25rem)"
+  intro:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "clamp(1.125rem, 1rem + 0.35vw, 1.3125rem)"
     fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: "0"
+    lineHeight: 1.55
+  step-title:
+    fontFamily: "Timeless Sans, sans-serif"
+    fontSize: "1.125rem"
+    fontWeight: 700
+    letterSpacing: "-0.01em"
   body:
-    fontFamily: "Switzer, sans-serif"
+    fontFamily: "Timeless Sans, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.7
-  label:
-    fontFamily: "Switzer, sans-serif"
+  step:
+    fontFamily: "Timeless Sans, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.55
-    fontFeature: "\"tnum\""
-  table:
-    fontFamily: "Switzer, sans-serif"
+  fine:
+    fontFamily: "Timeless Sans, sans-serif"
     fontSize: "0.9375rem"
-    fontFeature: "\"tnum\""
+    fontWeight: 400
   mono:
     fontFamily: "Geist Mono, monospace"
+  ascii-glyph:
+    fontFamily: "SF Mono, ui-monospace, Menlo, monospace"
+    fontSize: "16px"
+    fontWeight: 300
 rounded:
+  pill: "999px"
   control: "6px"
   md: "0.5rem"
 spacing:
   xs: "0.75rem"
   sm: "1rem"
   md: "1.5rem"
-  lg: "2rem"
+  lg: "1.75rem"
+  xl: "2.25rem"
+  2xl: "2.5rem"
 components:
-  button-primary:
-    backgroundColor: "{colors.lens-indigo}"
-    textColor: "{colors.on-indigo}"
-    rounded: "{rounded.control}"
-    padding: "0 1.375rem"
-    height: "2.875rem"
-  button-primary-night:
-    backgroundColor: "{colors.lens-indigo-night}"
-    textColor: "{colors.on-indigo-night}"
-    rounded: "{rounded.control}"
-    padding: "0 1.375rem"
-    height: "2.875rem"
-  link-quiet:
-    textColor: "{colors.ink}"
+  button-glow:
+    backgroundColor: "{colors.icon-orange}"
+    textColor: "{colors.night-ground}"
+    typography: "{typography.step-title}"
+    rounded: "{rounded.pill}"
+    padding: "0 1.875rem"
+    height: "3.375rem"
+  button-glow-hover:
+    backgroundColor: "{colors.icon-amber}"
+    textColor: "{colors.night-ground}"
+  link-night:
+    textColor: "{colors.night-ink}"
+  link-night-hover:
+    textColor: "{colors.icon-amber}"
+  link-docs:
+    textColor: "{colors.docs-body}"
     typography: "{typography.body}"
-  link-quiet-hover:
-    textColor: "{colors.lens-indigo}"
-  wall-label:
-    textColor: "{colors.body-ink}"
-    typography: "{typography.wall-label}"
-    width: "22rem"
-  step-label:
-    textColor: "{colors.label-gray}"
-    typography: "{typography.label}"
-    padding: "1rem 0 0"
+  link-docs-hover:
+    textColor: "{colors.docs-accent}"
+  link-docs-night-hover:
+    textColor: "{colors.icon-orange}"
 ---
 
 # Design System: Closeup
 
 ## Overview
 
-**Creative North Star: "The Single Work on a Gallery Wall"**
+**Creative North Star: "The Icon After Dark"**
 
-Closeup's site is a quiet room. The real app, its Live Controls panel at its true size, hangs on a matte white wall under one light, and a small wall label beside it says what it is, what it needs and how to get it. Nothing else competes. The visitor reads the label the way they'd read one in a gallery: name in a heavier weight, then a few plain lines, then the one thing to do.
+The home page is Closeup's app icon, turned into a place. It's always night there: a near-black ground with the icon's own gradient (lens indigo into pink, orange and amber) drawn as a field of drifting ASCII glyphs that glow like a horizon behind the opening screen and rise again under the closing one. Over that glow the site talks in big, heavy statements, set tight, and shows the real app windows sitting in soft pools of the same colors. The logo is on the page twice, as a lockup above the first statement and large over the close.
 
-Density is low and type is calm. The landing page gets almost all of its hierarchy from weight and ink, not size, and the docs pages keep that voice through tokens alone: same wall, same ink, same single indigo, same light from above. Dark mode isn't a different look. It's the same gallery after hours, with a dimmer wall and a dimmer spotlight.
+There's one typeface, Timeless Sans, from regular body text up to the black weight for the statements, so the page gets its drama from weight and scale rather than from a second face. The docs are the daytime part of the same building: Blume's three columns on a warm white paper (or the same night ground in dark mode), with a deep orange accent by day and the icon's orange by night. Harsha pinned these choices on 2026-10-29: no serif fonts, Timeless Sans with large heavyweight statements, the React Bits GradientASCII background, and Closeup's logo on the page.
 
-The world rejects the dark gradient SaaS hero, the centered headline over a device mockup, and the old warm gray type poster it replaced.
+Density is low: one idea per row, lots of dark space between them, and every word readable from the first frame even while the glyphs are still settling in.
 
 **Key Characteristics:**
-- Matte off-white wall and near-black ink, with a gray for secondary lines.
-- One indigo, taken from the icon's lens, only on things you can click.
-- One light source from above: a soft spotlight on the wall, every shadow cast downward.
-- Switzer for all text, Geist Mono for code.
-- Real screenshots at near their real size, never in device frames.
+- Always-night home page on a near-black ground, the same in light and dark mode.
+- The icon's gradient as a living ASCII glow, at the hero and at the close only.
+- Timeless Sans for every word, statements at 800 with tight tracking.
+- An orange pill button that catches the glow; amber on hover.
+- Real app windows in soft pools of the icon's colors, never in device frames.
+- The Closeup logo on the page, not just in the nav.
 
 ## Colors
 
-A near-neutral gallery palette (wall, ink, label gray) with a single cool indigo accent, in a light and a dark set.
+The icon's four colors on a night ground for the home page, and a quiet paper and ink set with one orange accent for the docs.
 
 ### Primary
-- **Lens Indigo** (light and night values in the frontmatter): the color of the lens in the app icon. It fills the Download for Mac button, tints link underlines at 55%, turns links fully indigo on hover, and drives the focus ring, text caret, form accent and the 16% (light) or 24% (night) selection tint. Text on it is white in light mode and near-black in dark mode.
+- **Icon Orange**: the color that acts on the home page. It fills the Download button, underlines links at 65%, colors the step numerals and the last line of the big statement ("No cloud."), tints selection at 30% and the glow under the button and logo. In dark mode docs it's also the accent.
+- **Docs Accent**: a deeper burnt orange that carries the same role on the light docs page, where Icon Orange would be too pale on paper: link hovers, 55% link underlines, focus rings, the caret and form accents, with white text on it.
+
+### Secondary
+- **Icon Amber**: the hover state. The button turns amber with an amber glow, links turn amber, and focus rings on the home page are amber.
+
+### Tertiary
+- **Icon Pink** and **Icon Indigo**: the other two stops of the icon's gradient. They only appear as light: in the ASCII glow, and as the soft pools behind screenshots (pink is the default pool, indigo sits behind Setup, orange behind Check Audio Sync).
 
 ### Neutral
-- **Gallery Wall**: the page background. Matte off-white by day, deep charcoal after hours.
-- **Ink**: headings, strong text, the wall label's name and the step titles.
-- **Body Ink**: running text in docs and the wall label's sentences. A touch softer than Ink so headings stand out without growing.
-- **Label Gray**: secondary lines on the wall label (the date line and the requirements), the step descriptions and their numbers.
-- **Hairline**: the 1px rule above each step and Blume's borders.
-- **Muted Wall** and **Code Wall**: Blume's muted surfaces and code block background, one step off the wall.
-- **Spotlight**: the center of the light pool on the wall. Pure white by day; by night a gray just above the wall.
-- **Scroll Thumb**: the scrollbar thumb, on a transparent track.
+- **Night Ground**: the home page background, and the docs background in dark mode.
+- **Night Ink**: warm off-white for statements, headings, the wordmark and step titles.
+- **Night Body**: the intro and feature paragraphs.
+- **Night Muted**: fine print and step descriptions.
+- **Night Rule**: the 1px rule on top of each step.
+- **Night Raised** and **Night Scroll**: Blume's muted surfaces and the scrollbar thumb at night.
+- **Docs Paper**, **Docs Ink**, **Docs Body**, **Docs Muted**, **Docs Border**, **Docs Surface**, **Docs Code**, **Docs Scroll**: the light docs, with night values where dark mode changes them.
 
 ### Named Rules
-**The Lens Rule.** Indigo goes only on what acts: the Download button, links, focus and text selection. If you can't click it, it isn't indigo.
+**The Icon Palette Rule.** Every color on the home page comes from the icon or from the night. Indigo, pink, orange and amber, plus the ground and its inks. Nothing else.
 
-**The After Hours Rule.** Dark mode keeps every role and only dims the room. Never add a color in dark mode that light mode doesn't have.
+**The One Hand Rule.** Orange is the only color you click (amber is its hover). Indigo and pink are light, never buttons or links.
+
+**The Always Night Rule.** The home page ignores the theme switch; it's night in both modes. The docs follow the switch.
 
 ## Typography
 
-**Display Font:** Switzer (with sans-serif fallback), weights 400, 500 and 600, from Fontshare
-**Body Font:** Switzer (with sans-serif fallback)
-**Label/Mono Font:** Geist Mono, for code in the docs only
+**Display Font:** Timeless Sans (with sans-serif fallback), self-hosted, weights 400, 500, 600, 700 and 800
+**Body Font:** Timeless Sans
+**Label/Mono Font:** Geist Mono for code in the docs; the ASCII glow draws its glyphs in SF Mono at 300
 
-**Character:** One neutral grotesque does everything, so the site reads like a well-set museum label rather than an ad. Headings tighten slightly (-0.02em); the wall label doesn't.
+**Character:** One grotesque, pushed to its black weight and tracked tight for statements that read like a poster, then relaxed to regular for plain, friendly paragraphs.
 
 ### Hierarchy
-- **Display** (600, 2.75rem): the title of a docs page.
-- **Headline** (600, 1.625rem): docs section headings.
-- **Wall Label** (400 with 600 for the name, fluid 1.0625rem to 1.25rem, line-height 1.5): the landing page's label. One size for every line; the name is 600 in Ink, the sentences 400 in Body Ink, the date and requirements 400 in Label Gray.
-- **Body** (400, 1rem, line-height 1.7): docs prose in Body Ink, with strong text in Ink at 600.
-- **Label** (400, 1rem, line-height 1.55, tabular figures): the four numbered steps. Title in Ink at 600, description and number in Label Gray.
-- **Table** (0.9375rem, tabular figures): docs tables.
+- **Hero Statement** (800, `clamp(3.25rem, 7.4vw, 7.25rem)`, line-height 0.92, -0.045em): the first screen's h1, balanced, up to 10.5em wide.
+- **Big Statement** (800, `clamp(3rem, 9vw, 9rem)`, line-height 0.9, -0.05em): the stacked "No app on the phone. No account. No cloud." lines, one per row.
+- **Section Statement** (800, `clamp(2.5rem, 5.4vw, 5rem)`, line-height 0.95, -0.045em): feature headings and "Your first call." The closing line goes up to `clamp(2.75rem, 7vw, 6.5rem)`.
+- **Step Numeral** (800, `clamp(3.5rem, 5vw, 4.75rem)`, -0.05em, tabular figures, Icon Orange): the step numbers.
+- **Wordmark** (800, `clamp(1.75rem, 2.4vw, 2.25rem)`, -0.035em): "Closeup" beside the logo in the hero lockup.
+- **Docs Display** (700, 2.75rem) and **Docs Headline** (700, 1.625rem), both -0.02em: docs titles and section headings.
+- **Intro** (400, `clamp(1.125rem, 1rem + 0.35vw, 1.3125rem)`, line-height 1.55): the hero paragraph (up to 32rem) and the aside under the big statement. Feature paragraphs run a step smaller, `clamp(1.0625rem, 1rem + 0.25vw, 1.25rem)`, up to 28rem.
+- **Step Title** (700, 1.125rem, -0.01em): step titles. The button uses the same size and weight.
+- **Body** (400, 1rem, line-height 1.7): docs prose, with strong text at 600. Tables are 0.9375rem with tabular figures.
+- **Step** (400, 1rem, line-height 1.55) and **Fine** (400, 0.9375rem): step descriptions and the requirements line.
 
 ### Named Rules
-**The Weight Not Size Rule.** On the landing page, hierarchy comes from weight and ink. The page's h1 is the same size as the sentence under it. Don't scale up a headline to make a point.
+**The No Serif Rule.** Timeless Sans for every word, Geist Mono only in code, a system mono only inside the ASCII glow. No serif, no second display face.
 
-**The One Face Rule.** Switzer for every word you read, Geist Mono only inside code.
+**The Heavy Statement Rule.** Statements are 800 with tracking between -0.045em and -0.05em and line-height under 1. Everything you read to learn something is 400. Little sits in between.
 
 ## Layout
 
-The landing page is one full-width wall under the nav, padded `clamp(3rem, 8svh, 6rem)` on top, 1.5rem at the sides and `clamp(5rem, 12svh, 9rem)` at the bottom. The first view is a two-column grid, centered as a pair: the panel on the left at its own width, the wall label on the right at up to 22rem, vertically centered on each other with a gap of `clamp(3.5rem, 8vw, 8rem)`. The hero fills the viewport less 12rem, so the steps peek in below.
+The home page is a stack of full-width bands, each with its content in an 82rem column padded `clamp(1.25rem, 4vw, 3rem)` at the sides.
 
-The panel image is at most 20rem (320px, its true size) and shrinks with viewport height (`(100svh - 13rem) * 0.4194`, the panel's aspect) down to 15rem, so the whole panel always fits on screen.
+The hero fills the viewport less 4rem. The ASCII glow covers the whole band behind a scrim (dark from the left, fading out by 75%, plus a fade to the ground at the bottom) so the words always read. On top sits a two-column grid: the logo lockup, statement, intro, buttons and fine print on the left, and Live Controls on the right at its true width, between 15rem and 20rem depending on viewport height (`(100svh - 14rem) * 0.4194`).
 
-Below, "Your first call" sits in a 68rem column: four equal steps in a row, two at 900px and under, one at 520px and under. At 760px and under the hero stacks, the panel centers at `min(17.5rem, 72vw)`, and the label sits below it.
+Then the big statement band, then three feature rows: copy and a real window side by side (copy at 1fr, window at 1.15fr), the middle row flipped. Then four steps in a row (two at 1080px and under, one at 520px and under). The close is centered: the logo at 5.5rem to 7rem, the closing statement, buttons and fine print, with the glow rising from the bottom edge.
 
-Spacing steps that repeat: 0.75rem (button row gap, step number to title), 1rem (step padding above), 1.5rem (side padding, button to link, heading to steps), 2rem (label to buttons, row gap between steps). Lines inside the wall label are grouped with a 1.25em gap, not spaced evenly.
+At 820px and under the hero and features stack, the hero scrim turns vertical, and Live Controls centers at `min(17.5rem, 72vw)`.
 
-Docs pages use Blume's three-column layout untouched. Screenshots in docs center in the column at their natural size, never taller than 40rem.
+Spacing steps that repeat: 0.75rem (button row gap), 1rem (logo to wordmark, numeral to title), 1.5rem (heading to paragraph), 1.75rem (button to link), 2.25rem (intro to buttons), 2.5rem (row gap between steps, stacked feature gap). Bands are spaced with `svh` clamps so they breathe with the viewport.
+
+Docs pages use Blume's three-column layout untouched. Screenshots in docs center at their natural size, never taller than 40rem.
 
 ## Elevation & Depth
 
-Depth comes from one light above the wall. A radial spotlight, the only gradient on the site, sits behind the hung panel, its top edge above the panel and its pool fading to transparent. Every hung object (the landing panel, docs screenshots) casts a soft shadow straight down: a long blur plus a tight contact shadow. In dark mode the contact shadow becomes a 1px white rim at 22% so the dark window edge still separates from the dark wall. Flat UI (buttons, step labels, text) casts nothing.
+Depth comes from light behind things and shadow under them. The ASCII glow is the deepest layer, then a scrim, then content. Screenshots on the home page sit in a radial pool of one icon color (50% at the center, 16% halfway, then nothing) and cast a long black shadow with a hairline white rim so the dark window edge reads on the dark ground. The logo and the button glow orange, as if lit by the field. In the docs, screenshots cast a soft downward shadow on paper, and the night version adds the same white rim.
 
 ### Shadow Vocabulary
-- **Hung Work** (`drop-shadow(0 32px 36px var(--closeup-shadow)) drop-shadow(0 2px 3px var(--closeup-shadow-near))`): the landing page's panel. Dark: `0 32px 40px` plus the white rim.
-- **Hung Figure** (`drop-shadow(0 14px 24px var(--closeup-shadow)) drop-shadow(0 1px 2px var(--closeup-shadow-near))`): screenshots in docs. Dark: `0 14px 28px` plus the white rim.
-- Shadow color is ink at 18% (far) and 16% (near) by day, black at 60% and 50% by night.
+- **Night Window** (`drop-shadow(0 34px 44px rgb(0 0 0 / 0.65)) drop-shadow(0 0 1px rgb(255 255 255 / 0.25))`): every screenshot on the home page.
+- **Button Glow** (`box-shadow: 0 12px 32px -10px rgb(255 135 87 / 0.7)`; hover `0 14px 38px -10px rgb(255 197 110 / 0.75)`): the orange pill.
+- **Logo Glow** (`drop-shadow(0 10px 24px rgb(255 135 87 / 0.35))` in the lockup, `drop-shadow(0 16px 40px rgb(255 135 87 / 0.45))` at the close): the icon.
+- **Docs Figure** (`drop-shadow(0 14px 24px rgb(22 22 20 / 0.18)) drop-shadow(0 1px 2px rgb(22 22 20 / 0.16))`; night `0 14px 28px` black at 60% plus the white rim at 22%): docs screenshots.
 
 ### Named Rules
-**The One Light Rule.** There's one light and it's above. Every shadow has zero x-offset and a positive y-offset; nothing glows, nothing lifts toward the viewer on hover.
+**The Glow Stays Put Rule.** The ASCII glow lives at the hero (horizon shape) and the close (rise shape) and nowhere else. The middle of the page is plain night with pools of light.
 
-**The Hung Object Rule.** Only things hung on the wall (real app windows and panels) get a shadow, and it's a drop-shadow filter that follows the window's own transparent corners, never a box-shadow on a frame.
+**The Readable First Rule.** Words always sit on a scrim over the glow, and the page reads before the glyphs finish arriving.
 
 ## Shapes
 
-Corners are small and practical. Blume's surfaces (cards, code blocks, tables) use 0.5rem. The Download button and every focus ring use 6px. Screenshots aren't clipped or framed: they're macOS windows exported with transparent corners, so their own rounded corners are the shape. Grouping is done with a single 1px hairline rule on top, not boxes.
+The one button is a full pill (999px). Docs controls and focus rings use 6px; Blume's cards, code blocks and tables use 0.5rem. Screenshots are macOS windows with transparent corners, so their own corners are the shape; they're never clipped or framed. The pools of light are soft ellipses with no edge. The only lines on the home page are the 1px rules on top of each step.
 
 ## Components
 
 ### Buttons
-Plain and confident, the only filled thing on the page.
-- **Shape:** gently rounded (6px).
-- **Primary:** Lens Indigo fill, white text (near-black at night), 1rem at 500, 2.875rem tall, 1.375rem side padding.
-- **Hover / Focus:** hover mixes 16% of Ink into the indigo over 160ms ease-out. Focus is a 2px indigo outline 3px out. Reduced motion drops the transition.
-- **Secondary:** there's no outlined or ghost button. The second action is a quiet link.
+Bright, round and warm, the one thing on the page that's lit from inside.
+- **Shape:** full pill (999px).
+- **Primary:** Icon Orange fill, Night Ground text, 1.0625rem at 700 with -0.01em tracking, 3.375rem tall, 1.875rem side padding, with the Button Glow.
+- **Hover / Focus:** turns Icon Amber with an amber glow over 160ms ease-out. Focus is a 2px amber outline 4px out. Reduced motion drops the transitions.
+- **Secondary:** no ghost or outlined buttons. The second action is a link.
 
-### Quiet Link
-The secondary action and every docs link: Ink (Body Ink in prose) text with a 1px underline in indigo at 55%, offset about 0.22em to 0.25em. Hover turns the text indigo over 150ms ease-out.
+### Links
+On the home page: Night Ink, 1.0625rem at 500, with a 1.5px orange underline at 65%, 0.25em offset; amber on hover over 150ms. In the docs: Docs Body text with a 1px accent underline at 55%, 0.22em offset; accent on hover.
 
-### Wall Label
-The landing page's call to action. Up to 22rem wide, one type size, lines in this order: name (600, Ink), date line (Label Gray), two short sentences (Body Ink), requirements (Label Gray), then the button and quiet link 2rem below.
+### Logo Lockup
+The app icon at 3.5rem to 4.5rem with the Logo Glow, 1rem from the wordmark. It opens the hero above the statement. The close repeats the icon alone, larger.
 
-### Step Labels
-A row of numbered labels on the bare wall. Each has a 1px Hairline rule on top, 1rem above the text, a plain counter number in Label Gray with tabular figures, the title in Ink at 600 on its own line, then one or two sentences in Label Gray.
+### Gradient ASCII Field
+The React Bits GradientASCII component (WebGL2), vendored into `site/islands` and credited on the docs Credits page. It draws the icon's gradient in the stops indigo, pink, orange, amber as a field of glyphs (` =+xX0S8#@`) on a 16px grid, with glow 0.35, flow 0.45 and speed 0.6. The pointer scrambles nearby glyphs (radius 0.08) and a click sends a ripple. The hero field plays a 2.4s intro and loads at once; the close field skips the intro and loads when it scrolls into view. Under reduced motion it holds a still frame with no flicker, intro or pointer effects. It's decorative and hidden from assistive tech.
 
-### Hung Work
-A real screenshot of the app, not a mockup. It's shown at its true size or a little under, with the spotlight behind it and the Hung Work shadow under it. On load the spotlight fades up once over 1400ms (`cubic-bezier(0.16, 1, 0.3, 1)`, 120ms delay). With reduced motion it's already lit.
+### Feature Row
+A Section Statement and one short paragraph beside a real app window in its pool of light. Rows alternate sides.
+
+### Steps
+Four steps after a 1px Night Rule each: a big orange numeral, the title in Step Title, then a sentence in Night Muted.
 
 ### Navigation
-Blume's header, themed by tokens: the icon and "Closeup" on the left, Docs and GitHub on the right.
+Blume's header with the icon and "Closeup", Docs and GitHub, themed by tokens. On the home page it sits on the night ground.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep Lens Indigo on things that act: buttons, links, focus, selection.
-- **Do** build hierarchy on the landing page with weight (400 and 600) and ink (Ink, Body Ink, Label Gray) at one size.
-- **Do** show the real app at its real size, lit from above with the Hung Work or Hung Figure shadow.
-- **Do** cast every shadow straight down, and switch the contact shadow to the 1px white rim in dark mode.
+- **Do** keep the home page on Night Ground in both light and dark mode.
+- **Do** use only the icon's four colors on the home page, with orange (amber on hover) as the only one you click.
+- **Do** set statements in Timeless Sans 800 with tight tracking, and paragraphs at 400.
+- **Do** show the Closeup logo on the page, in the hero lockup and at the close.
+- **Do** keep the GradientASCII glow to the hero and the close, behind a scrim, and credit React Bits.
+- **Do** put real app windows in a soft pool of one icon color with the Night Window shadow.
 - **Do** theme docs pages through tokens only and leave Blume's layout alone.
-- **Do** let the spotlight come up once on load and skip it under reduced motion.
 
 ### Don't:
-- **Don't** use a dark gradient SaaS hero, a centered headline over a device mockup, or a warm gray type poster.
-- **Don't** add badges, chips, icon tiles or any gradient other than the spotlight.
+- **Don't** use serif fonts, or any face but Timeless Sans outside code.
+- **Don't** use indigo or pink for buttons, links or text; they're light.
+- **Don't** add badges, chips, icon tiles or gradients beyond the ASCII glow, the pools and the scrims.
 - **Don't** put a screenshot in a device frame or a box; its own corners are its shape.
-- **Don't** use indigo for decoration, headings, rules or backgrounds.
-- **Don't** add a second accent color, in either mode.
+- **Don't** let words sit directly on moving glyphs without a scrim.
+- **Don't** bring the night ground or the glow into the light docs.

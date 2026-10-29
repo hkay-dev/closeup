@@ -1,5 +1,14 @@
 import { defineConfig } from "blume";
 
+// Timeless Sans (Timeless Free Font License 1.2, timeless.co/type/license), self-hosted.
+const timelessSans = [
+  { src: "fonts/TimelessSans-Regular.woff2", weight: 400 },
+  { src: "fonts/TimelessSans-Medium.woff2", weight: 500 },
+  { src: "fonts/TimelessSans-Semibold.woff2", weight: 600 },
+  { src: "fonts/TimelessSans-Bold.woff2", weight: 700 },
+  { src: "fonts/TimelessSans-Black.woff2", weight: 800 },
+];
+
 export default defineConfig({
   title: "Closeup",
   description:
@@ -11,13 +20,13 @@ export default defineConfig({
   },
 
   theme: {
-    accent: { light: "#3F3FB8", dark: "#9494F7" },
-    background: { light: "#F5F5F2", dark: "#141414" },
+    accent: { light: "#C23A1C", dark: "#FF8757" },
+    background: { light: "#F5F5F2", dark: "#0D0C12" },
     radius: "md",
     mode: "system",
     fonts: {
-      display: { name: "Switzer", provider: "fontshare", fallback: "sans", weights: [400, 500, 600] },
-      body: { name: "Switzer", provider: "fontshare", fallback: "sans", weights: [400, 500, 600] },
+      display: { name: "Timeless Sans", fallback: "sans", variants: timelessSans },
+      body: { name: "Timeless Sans", fallback: "sans", variants: timelessSans },
       mono: "geist-mono",
     },
   },

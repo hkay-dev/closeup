@@ -1,5 +1,5 @@
-/* Closeup: a white gallery wall, near-black ink, one indigo from the icon's lens.
-   Indigo goes only on what acts (buttons, links); one light source, from above. */
+/* Closeup: near-black ink and a night ground, with the icon's warm orange as
+   the one color that acts (buttons, links). Timeless Sans for every word. */
 
 :root {
   --blume-foreground: #161616;
@@ -10,28 +10,26 @@
   --blume-code-background: #ededea;
 
   --closeup-body: #2e2e2c;
-  /* The spotlight on the wall, and the shadow it casts under a hung object. */
-  --closeup-light: #ffffff;
+  /* The shadow under a screenshot window. */
   --closeup-shadow: rgb(22 22 20 / 0.18);
   --closeup-shadow-near: rgb(22 22 20 / 0.16);
-  --closeup-selection: rgb(63 63 184 / 0.16);
+  --closeup-selection: rgb(255 135 87 / 0.22);
   --closeup-scroll: #cfcfca;
 }
 
 :root[data-theme="dark"] {
-  --blume-foreground: #ededea;
-  --blume-muted: #1f1f1e;
-  --blume-muted-foreground: #9b9b95;
-  --blume-border: #2b2b29;
-  --blume-accent-foreground: #111111;
-  --blume-code-background: #0e0e0e;
+  --blume-foreground: #f3eee9;
+  --blume-muted: #1b1922;
+  --blume-muted-foreground: #a29dab;
+  --blume-border: #26232f;
+  --blume-accent-foreground: #0d0c12;
+  --blume-code-background: #08070c;
 
-  --closeup-body: #d4d4cf;
-  --closeup-light: #222221;
+  --closeup-body: #d6d1da;
   --closeup-shadow: rgb(0 0 0 / 0.6);
   --closeup-shadow-near: rgb(0 0 0 / 0.5);
-  --closeup-selection: rgb(148 148 247 / 0.24);
-  --closeup-scroll: #3a3a38;
+  --closeup-selection: rgb(255 135 87 / 0.28);
+  --closeup-scroll: #34303d;
 }
 
 /* Browser surfaces */
@@ -65,7 +63,7 @@ h6 {
   line-height: 1.7;
 }
 .prose :where(h1, h2, h3, h4) {
-  font-weight: 600;
+  font-weight: 700;
 }
 .prose :where(h1) {
   font-size: 2.75rem;
@@ -94,7 +92,7 @@ h6 {
 }
 
 /* The screenshots are macOS windows at 2x with transparent corners: keep them
-   near their real size, lit from above like everything else on the wall. */
+   near their real size, with the window shadow they were cut from. */
 .prose :where(figure img) {
   filter: drop-shadow(0 14px 24px var(--closeup-shadow)) drop-shadow(0 1px 2px var(--closeup-shadow-near));
   margin-inline: auto;

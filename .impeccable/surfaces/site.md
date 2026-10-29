@@ -9,20 +9,20 @@ Scope: the Closeup docs site in `site/` (Blume). Landing page is Persuade; every
 
 Audience: Mac users with an Android phone who want it as a webcam, most of whom don't know adb, scrcpy or OBS. A short developer section covers building and internals.
 
-Brief (2026-10-29, android-webcam#bt62): simple, elegant, clean, minimal; a fresh look replacing warm gray and orange; the real app leads the first screen; a few short points below; code-led build. Decision comp: `.impeccable/mocks/decision/assigned.png` (critique reference, not a spec).
+Brief (2026-10-29, android-webcam#bt62, revised in android-webcam#ydvv): the real app leads the first screen; a few short points below; code-led build. Harsha pinned these choices on 2026-10-29: no serif fonts, Timeless Sans with large heavyweight statements, the React Bits GradientASCII background, and Closeup's logo on the page.
 
 ## Direction contract
 
 seed: seed:3a74d9de302f194b
 
-THESIS: Closeup hung like a single work on a white gallery wall, with a small wall label beside it. Refuses the dark gradient SaaS hero, the centered headline over a device mockup, and the old warm-gray type poster.
+THESIS: Closeup's icon after dark: its gradient glows as living ASCII on a night ground while heavy statements and the real app make the case. Refuses device mockups and stock SaaS gradient blobs.
 
-OWN-WORLD: Matte gallery white wall (#F5F5F2) with near-black ink (#161616) and a gray for secondary label lines; dark mode is the same gallery after hours (#141414 wall). One indigo from the icon's lens (#3F3FB8 light, #9494F7 dark) used only on what acts: the Download button, links. One light source from above: a soft spotlight falloff on the wall and every shadow cast downward. Switzer (Fontshare) for all text; Geist Mono stays for code in the docs. No badges, chips, icon tiles or gradients beyond the light.
+OWN-WORLD: Home page always night (#0D0C12) with warm off-white ink. Only the icon's colors: indigo #3B40BC, pink #EE4D6A, orange #FF8757, amber #FFC56E. Orange is the one color you click. Timeless Sans for every word, statements at 800, tracked tight. Docs keep light and dark, accent #C23A1C / #FF8757.
 
-STORY: The visitor sees the real Live Controls panel at its true size, reads the wall label (name, what it is, what it needs, that it's free), and clicks Download for Mac, which goes to the install page. Below, four small labels in the order a first call happens: plug in, start, pick the camera, tune it.
+STORY: Logo, promise, real Live Controls, Download. Then what it doesn't need, three features beside real windows, four steps, and a close.
 
-FIRST VIEWPORT: A full-width wall under the nav. The Live Controls panel, true size (320 px wide, capped by viewport height), sits left of center; the wall label sits to its right on the panel's eye-line, about 22rem wide, one type size with hierarchy by weight and ink: "Closeup", the medium line "Android phone and Mac, 2026.", one short description, the requirements, then an indigo Download for Mac button and a Read the docs link.
+FIRST VIEWPORT: Logo lockup, heavy h1, intro, orange pill and docs link on the left, true-size Live Controls on the right, over the horizon glow behind a scrim.
 
-FORM: Persuade landing on Blume's PageLayout, then Blume's three-column docs for Read pages, themed through tokens only. Below the fold: one row of four numbered labels on the same wall, then the footer.
+FORM: Persuade landing on Blume's PageLayout; Blume's three-column docs themed by tokens only.
 
-SIGNATURE: The wall label as the call to action; on load the spotlight comes up once over the panel (reduced motion: already lit).
+SIGNATURE: The GradientASCII glow (horizon at the hero, rise at the close), screenshots in pools of icon color.

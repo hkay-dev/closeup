@@ -2,9 +2,17 @@
 import { Image } from "astro:assets";
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
+import audioSyncShot from "../content/images/audio-sync.png";
 import liveControlsShot from "../content/images/live-controls.png";
+import settingsShot from "../content/images/settings.png";
+import setupShot from "../content/images/setup.png";
+import GradientASCII from "../islands/GradientASCII.jsx";
 
 const { config } = data;
+
+// The icon's own gradient: lens indigo, then pink, orange and amber.
+const glow = ["#3B40BC", "#EE4D6A", "#FF8757", "#FFC56E"];
+const asciiFont = '"SF Mono", ui-monospace, Menlo, monospace';
 ---
 
 <PageLayout
@@ -22,43 +30,128 @@ const { config } = data;
     route: "/",
   }}
 >
-  <div class="wall">
+  <div class="landing">
     <section class="hero" aria-labelledby="title">
-      <figure class="work">
-        <Image
-          src={liveControlsShot}
-          width={320}
-          densities={[1, 2]}
-          loading="eager"
-          alt="Closeup's Live Controls panel: a Pixel 8 is ready, with a Start Webcam button and lens, zoom, flashlight, exposure, white balance and focus controls"
+      <div class="field" aria-hidden="true">
+        <GradientASCII
+          client:load
+          colors={glow}
+          shape="horizon"
+          cellSize={16}
+          glow={0.35}
+          flow={0.45}
+          speed={0.6}
+          scrambleRadius={0.08}
+          fontFamily={asciiFont}
         />
-      </figure>
+      </div>
 
-      <div class="label">
-        <h1 id="title">Closeup</h1>
-        <p class="medium">Android phone and Mac, 2026.</p>
-        <p>
-          Your Android phone becomes your Mac's webcam in Zoom, Meet, FaceTime, Teams or QuickTime. No
-          app on the phone, no account, no cloud.
-        </p>
-        <p class="medium">Free and open source. Needs macOS 13 and Android 12 or later.</p>
-        <div class="cta">
-          <a class="btn" href="/install">Download for Mac</a>
-          <a class="docs" href="/introduction">Read the docs</a>
+      <div class="hero-inner">
+        <div class="pitch">
+          <p class="lockup">
+            <img src="/icon.svg" alt="" width="72" height="72" />
+            <span>Closeup</span>
+          </p>
+          <h1 id="title">Your Android phone, as your Mac’s webcam.</h1>
+          <p class="intro">
+            Plug in the phone, click Start Webcam, and pick OBS Virtual Camera in Zoom, Meet, FaceTime,
+            Teams or QuickTime.
+          </p>
+          <div class="cta">
+            <a class="btn" href="/install">Download for Mac</a>
+            <a class="docs" href="/introduction">Read the docs</a>
+          </div>
+          <p class="fine">Free and open source. Needs macOS 13 and Android 12 or later.</p>
         </div>
+
+        <figure class="shot live">
+          <Image
+            src={liveControlsShot}
+            width={320}
+            densities={[1, 2]}
+            loading="eager"
+            alt="Closeup's Live Controls panel: a Pixel 8 is ready, with a Start Webcam button and lens, zoom, flashlight, exposure, white balance and focus controls"
+          />
+        </figure>
       </div>
     </section>
 
+    <section class="nots" aria-label="What it doesn't need">
+      <p class="statement">
+        <span>No app on the phone.</span>
+        <span>No account.</span>
+        <span class="hot">No cloud.</span>
+      </p>
+      <p class="aside">
+        The picture goes from your phone to your Mac over USB or Wi-Fi, and nowhere else. Closeup never
+        records it.
+      </p>
+    </section>
+
+    <section class="feature">
+      <div class="copy">
+        <h2>Set up once.</h2>
+        <p>
+          Setup walks you through five steps the first time. Set Up for Me installs the Mac part for you,
+          and you approve the camera once.
+        </p>
+      </div>
+      <figure class="shot" style="--pool: 59 64 188">
+        <Image
+          src={setupShot}
+          width={420}
+          densities={[1, 2]}
+          alt="The Set Up Closeup window, with a Set Up for Me button and five steps: get Android platform tools, install OBS Studio, turn on OBS's camera, connect your phone, close OBS Studio"
+        />
+      </figure>
+    </section>
+
+    <section class="feature flip">
+      <div class="copy">
+        <h2>Then forget about it.</h2>
+        <p>
+          Have it start when the phone is plugged in, and get a heads-up if the phone runs hot or the
+          cable comes loose.
+        </p>
+      </div>
+      <figure class="shot">
+        <Image
+          src={settingsShot}
+          width={560}
+          densities={[1, 2]}
+          alt="Closeup Settings, General page: Launch at login, Start when the phone is plugged in, and Notifications"
+        />
+      </figure>
+    </section>
+
+    <section class="feature">
+      <div class="copy">
+        <h2>Lips in sync.</h2>
+        <p>
+          Clap once in front of the camera. Closeup measures how far the picture trails the sound and tells
+          you how much to delay your audio.
+        </p>
+      </div>
+      <figure class="shot" style="--pool: 255 135 87">
+        <Image
+          src={audioSyncShot}
+          width={440}
+          densities={[1, 2]}
+          alt="The Check Audio Sync window reading 118 ms: video is behind the sound, so delay the audio by 118 ms in your call app"
+        />
+      </figure>
+    </section>
+
     <section class="steps" aria-labelledby="steps-title">
-      <h2 id="steps-title">Your first call</h2>
+      <h2 id="steps-title">Your first call.</h2>
       <ol>
         <li>
           <strong>Plug in your phone.</strong>
-          USB-C, or Wi-Fi once it's paired. Nothing to install on the phone.
+          USB-C, or Wi-Fi once it’s paired. Nothing to install on the phone.
         </li>
         <li>
           <strong>Click Start Webcam.</strong>
-          It's in the menu bar. Setup walks you through the first time.
+          It’s in the menu bar. Setup walks you through the first time.
         </li>
         <li>
           <strong>Pick OBS Virtual Camera.</strong>
@@ -70,227 +163,425 @@ const { config } = data;
         </li>
       </ol>
     </section>
+
+    <section class="finale" aria-labelledby="finale-title">
+      <div class="field" aria-hidden="true">
+        <GradientASCII
+          client:visible
+          colors={glow}
+          shape="rise"
+          cellSize={16}
+          glow={0.35}
+          flow={0.45}
+          speed={0.6}
+          intro={false}
+          scrambleRadius={0.08}
+          fontFamily={asciiFont}
+        />
+      </div>
+      <div class="finale-inner">
+        <img src="/icon.svg" alt="" width="112" height="112" />
+        <h2 id="finale-title">Free. Open source. Yours.</h2>
+        <div class="cta">
+          <a class="btn" href="/install">Download for Mac</a>
+          <a class="docs" href="https://github.com/hkay-dev/closeup">See the code</a>
+        </div>
+        <p class="fine">Apache-2.0. Needs macOS 13 and Android 12 or later.</p>
+      </div>
+    </section>
   </div>
 </PageLayout>
 
 <style>
-  /* One wall, one light from above. */
-  .wall {
-    isolation: isolate;
+  /* The home page is always night: the icon's glow, drawn in ASCII, on a dark ground. */
+  :global(:root:root:has(.landing)) {
+    --ground: #0d0c12;
+    --ink: #f6f1ec;
+    --body: #cbc5d1;
+    --muted: #958fa1;
+    --rule: rgb(246 241 236 / 0.12);
+    --orange: #ff8757;
+    --amber: #ffc56e;
+    --pink: #ee4d6a;
+
+    --blume-background: var(--ground);
+    --blume-foreground: var(--ink);
+    --blume-muted-foreground: var(--muted);
+    --blume-muted: #1b1922;
+    --blume-border: var(--rule);
+    --closeup-selection: rgb(255 135 87 / 0.3);
+    --closeup-scroll: #34303d;
+    color-scheme: dark;
+  }
+
+  .landing {
+    background: var(--ground);
+    color: var(--body);
+    font-family: var(--blume-font-body);
     overflow: clip;
-    padding: clamp(3rem, 8svh, 6rem) 1.5rem clamp(5rem, 12svh, 9rem);
   }
 
-  .hero {
-    align-items: center;
-    column-gap: clamp(3.5rem, 8vw, 8rem);
-    display: grid;
-    grid-template-columns: auto minmax(0, 22rem);
-    justify-content: center;
-    min-height: calc(100svh - 12rem);
+  .field {
+    inset: 0;
+    position: absolute;
+    z-index: 0;
   }
 
-  .work {
+  .shot {
     margin: 0;
+  }
+
+  .shot :global(img) {
+    display: block;
+    filter: drop-shadow(0 34px 44px rgb(0 0 0 / 0.65)) drop-shadow(0 0 1px rgb(255 255 255 / 0.25));
+    height: auto;
+    max-width: 100%;
+  }
+
+  /* Hero: the logo, a heavy statement and the real app, over the glow. */
+  .hero {
+    isolation: isolate;
+    min-height: calc(100svh - 4rem);
     position: relative;
   }
 
-  /* The spotlight on the wall, centered over the panel. */
-  .work::before {
-    aspect-ratio: 1;
-    background: radial-gradient(
-      closest-side,
-      var(--closeup-light),
-      color-mix(in oklab, var(--closeup-light) 55%, transparent) 40%,
-      color-mix(in oklab, var(--closeup-light) 18%, transparent) 70%,
-      transparent
-    );
+  /* A soft scrim behind the words so they always read over the moving glyphs. */
+  .hero::after {
+    background:
+      linear-gradient(90deg, rgb(13 12 18 / 0.86) 0%, rgb(13 12 18 / 0.55) 45%, transparent 75%),
+      linear-gradient(0deg, var(--ground) 0%, transparent 18%);
     content: "";
-    left: 50%;
+    inset: 0;
     pointer-events: none;
     position: absolute;
-    top: -40%;
-    transform: translateX(-50%);
-    width: min(140vw, 64rem);
-    z-index: -1;
+    z-index: 1;
   }
 
-  .work :global(img) {
-    display: block;
-    filter: drop-shadow(0 32px 36px var(--closeup-shadow)) drop-shadow(0 2px 3px var(--closeup-shadow-near));
-    height: auto;
-    width: clamp(15rem, calc((100svh - 13rem) * 0.4194), 20rem);
+  .hero-inner {
+    align-items: center;
+    column-gap: clamp(2.5rem, 6vw, 6rem);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: 0 auto;
+    max-width: 82rem;
+    min-height: inherit;
+    padding: clamp(3rem, 9svh, 6rem) clamp(1.25rem, 4vw, 3rem);
+    position: relative;
+    z-index: 2;
   }
 
-  :global(:root[data-theme="dark"]) .work :global(img) {
-    filter: drop-shadow(0 32px 40px var(--closeup-shadow)) drop-shadow(0 0 1px rgb(255 255 255 / 0.22));
+  .lockup {
+    align-items: center;
+    color: var(--ink);
+    display: flex;
+    font-size: clamp(1.75rem, 2.4vw, 2.25rem);
+    font-weight: 800;
+    gap: 1rem;
+    letter-spacing: -0.035em;
+    margin: 0 0 clamp(1.75rem, 4svh, 2.75rem);
   }
 
-  /* The wall label: one size, hierarchy by weight and ink. */
-  .label {
-    color: var(--closeup-body);
-    font-size: clamp(1.0625rem, 0.95rem + 0.3vw, 1.25rem);
-    line-height: 1.5;
+  .lockup img {
+    filter: drop-shadow(0 10px 24px rgb(255 135 87 / 0.35));
+    height: clamp(3.5rem, 5vw, 4.5rem);
+    width: auto;
   }
 
-  .label h1 {
-    color: var(--blume-foreground);
-    font-family: var(--blume-font-body);
-    font-size: inherit;
-    font-weight: 600;
-    letter-spacing: 0;
-    line-height: inherit;
+  h1 {
+    color: var(--ink);
+    font-family: var(--blume-font-display);
+    font-size: clamp(3.25rem, 7.4vw, 7.25rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 0.92;
     margin: 0;
+    max-width: 10.5em;
+    text-wrap: balance;
   }
 
-  .label p {
-    margin: 0;
+  .intro {
+    color: var(--body);
+    font-size: clamp(1.125rem, 1rem + 0.35vw, 1.3125rem);
+    line-height: 1.55;
+    margin: clamp(1.5rem, 3.5svh, 2.25rem) 0 0;
+    max-width: 32rem;
     text-wrap: pretty;
   }
 
-  .label .medium {
-    color: var(--blume-muted-foreground);
-  }
-
-  .label h1 + .medium {
-    margin-bottom: 1.25em;
-  }
-
-  .label p:not(.medium) + .medium {
-    margin-top: 1.25em;
+  .fine {
+    color: var(--muted);
+    font-size: 0.9375rem;
+    margin: 1.25rem 0 0;
   }
 
   .cta {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem 1.5rem;
-    margin-top: 2rem;
+    gap: 0.75rem 1.75rem;
+    margin-top: 2.25rem;
   }
 
   .btn {
     align-items: center;
-    background: var(--blume-accent);
-    border-radius: 6px;
-    color: var(--blume-accent-foreground);
+    background: var(--orange);
+    border-radius: 999px;
+    box-shadow: 0 12px 32px -10px rgb(255 135 87 / 0.7);
+    color: var(--ground);
     display: inline-flex;
-    font-size: 1rem;
-    font-weight: 500;
-    min-height: 2.875rem;
-    padding: 0 1.375rem;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    min-height: 3.375rem;
+    padding: 0 1.875rem;
     text-decoration: none;
-    transition: background-color 160ms ease-out;
+    transition:
+      background-color 160ms ease-out,
+      box-shadow 160ms ease-out;
   }
 
   .btn:hover {
-    background: color-mix(in oklab, var(--blume-accent) 84%, var(--blume-foreground));
+    background: var(--amber);
+    box-shadow: 0 14px 38px -10px rgb(255 197 110 / 0.75);
   }
 
   .btn:focus-visible,
   .docs:focus-visible {
-    outline: 2px solid var(--blume-accent);
-    outline-offset: 3px;
+    outline: 2px solid var(--amber);
+    outline-offset: 4px;
   }
 
   .docs {
-    color: var(--blume-foreground);
-    font-size: 1rem;
-    text-decoration-color: color-mix(in oklab, var(--blume-accent) 55%, transparent);
+    color: var(--ink);
+    font-size: 1.0625rem;
+    font-weight: 500;
+    text-decoration-color: rgb(255 135 87 / 0.65);
     text-decoration-line: underline;
-    text-decoration-thickness: 1px;
+    text-decoration-thickness: 1.5px;
     text-underline-offset: 0.25em;
     transition: color 150ms ease-out;
   }
 
   .docs:hover {
-    color: var(--blume-accent);
+    color: var(--amber);
   }
 
-  /* Four small labels in the order a first call happens. */
+  .live :global(img) {
+    width: clamp(15rem, calc((100svh - 14rem) * 0.4194), 20rem);
+  }
+
+  /* Three heavy lines, the last one in the icon's orange. */
+  .nots {
+    margin: 0 auto;
+    max-width: 82rem;
+    padding: clamp(5rem, 14svh, 9rem) clamp(1.25rem, 4vw, 3rem) clamp(3rem, 8svh, 5rem);
+  }
+
+  .statement {
+    color: var(--ink);
+    display: grid;
+    font-family: var(--blume-font-display);
+    font-size: clamp(3rem, 9vw, 9rem);
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 0.9;
+    margin: 0;
+  }
+
+  .statement .hot {
+    color: var(--orange);
+  }
+
+  .aside {
+    font-size: clamp(1.125rem, 1rem + 0.35vw, 1.3125rem);
+    line-height: 1.55;
+    margin: clamp(2rem, 5svh, 3rem) 0 0;
+    max-width: 34rem;
+    text-wrap: pretty;
+  }
+
+  /* One feature per row: a heavy heading beside a real window. */
+  .feature {
+    isolation: isolate;
+    align-items: center;
+    column-gap: clamp(2.5rem, 6vw, 6rem);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    margin: 0 auto;
+    max-width: 82rem;
+    padding: clamp(3.5rem, 9svh, 6rem) clamp(1.25rem, 4vw, 3rem);
+  }
+
+  /* Each window sits in a soft pool of one of the icon's colors. */
+  .feature .shot {
+    --pool: 238 77 106;
+    justify-self: center;
+    position: relative;
+  }
+
+  .feature .shot::before {
+    background: radial-gradient(closest-side, rgb(var(--pool) / 0.5), rgb(var(--pool) / 0.16) 55%, transparent);
+    content: "";
+    inset: -30% -35%;
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+  }
+
+  .flip .copy {
+    order: 2;
+  }
+
+  h2 {
+    color: var(--ink);
+    font-family: var(--blume-font-display);
+    font-size: clamp(2.5rem, 5.4vw, 5rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 0.95;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .copy p {
+    font-size: clamp(1.0625rem, 1rem + 0.25vw, 1.25rem);
+    line-height: 1.55;
+    margin: 1.5rem 0 0;
+    max-width: 28rem;
+    text-wrap: pretty;
+  }
+
+  /* Four steps, numbered big in orange. */
   .steps {
-    margin: clamp(4rem, 10svh, 7rem) auto 0;
-    max-width: 68rem;
-  }
-
-  .steps h2 {
-    color: var(--blume-foreground);
-    font-family: var(--blume-font-body);
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: 0;
-    margin: 0 0 1.5rem;
+    margin: 0 auto;
+    max-width: 82rem;
+    padding: clamp(4rem, 10svh, 7rem) clamp(1.25rem, 4vw, 3rem) clamp(5rem, 12svh, 8rem);
   }
 
   .steps ol {
     counter-reset: step;
     display: grid;
-    gap: 2rem clamp(1.5rem, 3vw, 3rem);
+    gap: 2.5rem clamp(1.5rem, 3vw, 3rem);
     grid-template-columns: repeat(4, minmax(0, 1fr));
     list-style: none;
-    margin: 0;
+    margin: clamp(2.5rem, 5svh, 3.5rem) 0 0;
     padding: 0;
   }
 
   .steps li {
-    border-top: 1px solid var(--blume-border);
-    color: var(--blume-muted-foreground);
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
     counter-increment: step;
     font-size: 1rem;
     line-height: 1.55;
-    padding-top: 1rem;
+    padding-top: 1.25rem;
     text-wrap: pretty;
   }
 
   .steps li::before {
-    color: var(--blume-muted-foreground);
+    color: var(--orange);
     content: counter(step);
     display: block;
+    font-family: var(--blume-font-display);
+    font-size: clamp(3.5rem, 5vw, 4.75rem);
     font-variant-numeric: tabular-nums;
-    margin-bottom: 0.75rem;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1;
+    margin-bottom: 1rem;
   }
 
   .steps strong {
-    color: var(--blume-foreground);
+    color: var(--ink);
     display: block;
-    font-weight: 600;
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.25rem;
   }
 
-  /* The light comes up once, over a page that's readable from the first frame. */
-  @media (prefers-reduced-motion: no-preference) {
-    .work::before {
-      animation: lights-up 1400ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
-    }
-
-    @keyframes lights-up {
-      from {
-        opacity: 0;
-      }
-    }
+  /* The close: the logo and the button, with the glow rising beneath them. */
+  .finale {
+    --rise: clamp(13rem, 34svh, 20rem);
+    isolation: isolate;
+    position: relative;
   }
 
-  @media (max-width: 900px) {
+  .finale .field {
+    height: calc(var(--rise) * 1.6);
+    inset: auto 0 0;
+  }
+
+  .finale::after {
+    background: linear-gradient(180deg, var(--ground) 0%, rgb(13 12 18 / 0.6) 30%, transparent 60%);
+    bottom: 0;
+    content: "";
+    height: calc(var(--rise) * 1.6);
+    inset-inline: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 1;
+  }
+
+  .finale-inner {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(4rem, 10svh, 6rem) 1.25rem calc(var(--rise) + 1rem);
+    position: relative;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .finale-inner img {
+    filter: drop-shadow(0 16px 40px rgb(255 135 87 / 0.45));
+    height: clamp(5.5rem, 9vw, 7rem);
+    margin-bottom: 2rem;
+    width: auto;
+  }
+
+  .finale h2 {
+    font-size: clamp(2.75rem, 7vw, 6.5rem);
+    max-width: 9em;
+  }
+
+  .finale .cta {
+    justify-content: center;
+  }
+
+  @media (max-width: 1080px) {
     .steps ol {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
-  @media (max-width: 760px) {
-    .hero {
-      grid-template-columns: minmax(0, 22rem);
-      min-height: 0;
-      row-gap: 3.5rem;
+  @media (max-width: 820px) {
+    .hero-inner {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 4rem;
     }
 
-    .work {
+    .hero::after {
+      background:
+        linear-gradient(180deg, rgb(13 12 18 / 0.8) 0%, rgb(13 12 18 / 0.5) 55%, transparent 80%),
+        linear-gradient(0deg, var(--ground) 0%, transparent 18%);
+    }
+
+    .live {
       justify-self: center;
     }
 
-    .work :global(img) {
+    .live :global(img) {
       width: min(17.5rem, 72vw);
     }
 
-    .work::before {
-      top: -35%;
+    .feature {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 2.5rem;
+    }
+
+    .flip .copy {
+      order: 0;
     }
   }
 
