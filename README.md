@@ -22,7 +22,7 @@ Closeup is a small menu bar app for the Mac. Plug in your phone, click **Start W
 
 ## Get started
 
-1. Download `Closeup.dmg` from the [releases page](https://github.com/hkay-dev/closeup/releases) and drag **Closeup** into **Applications**.
+1. Download [Closeup.dmg](https://github.com/hkay-dev/closeup/releases/latest/download/Closeup.dmg) from the newest [release](https://github.com/hkay-dev/closeup/releases) and drag **Closeup** into **Applications**.
 2. The app isn't notarized yet, so macOS blocks the first open. [Install](site/content/%2801-get-started%29/install.mdx) shows how to let it through.
 3. Open it. Setup gets the two free tools it needs (Google's platform tools and OBS Studio) and walks you through turning on USB debugging on the phone.
 

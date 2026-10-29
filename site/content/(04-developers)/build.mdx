@@ -38,7 +38,7 @@ SCRCPY_SERVER_PATH=build/scrcpy-server-webcam.jar ./scripts/build-app.sh
 | `UNIVERSAL=1` | Builds one binary for Apple silicon and Intel. |
 | `scripts/make-dmg.sh` | Packs the app into `build/Closeup.dmg`. |
 
-CI builds on pushes to `main` and on pull requests. A `v*` tag publishes the DMG and a zip as a GitHub release, stamped with the tag's version.
+There's no CI. `scripts/release.sh` publishes a release from the Mac: it builds a universal app stamped with the version, packs `Closeup.dmg` and `Closeup.zip`, and uploads both as a GitHub release. With no argument it takes the last release's version and adds one to its last number (`v0.1.0` for the first). Give it a version, such as `scripts/release.sh v0.2.0`, to pick one.
 
 ## Run it without a phone
 
