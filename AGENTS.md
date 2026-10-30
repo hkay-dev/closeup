@@ -11,4 +11,4 @@
 
 Docs: docs
 Bugs: kata project android-webcam
-Visibility: private
+Visibility: public
