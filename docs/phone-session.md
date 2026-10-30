@@ -11,7 +11,7 @@ About 90 minutes without the optional parts at the end. The order keeps the phon
 
 ## Before
 
-1. The agent takes the phone lease: `~/.agents/skills/android-dev/scripts/devlease take phone <you> --ttl 180`.
+1. The agent takes the phone lease: `qm take phone <you> --ttl 10800`.
 2. Plug in the S25 Ultra over USB-C and unlock it. `adb devices -l` lists it with a `usb:` field.
 3. Quit any running Closeup. Build once: `scripts/build-app.sh`.
 4. `'build/Closeup.app/Contents/MacOS/Closeup' --diagnose` shows the phone under `usb_devices` and `obs_camera_installed: true`.
@@ -90,7 +90,7 @@ With the webcam live: `pmset -g assertions` shows no sleep-preventing assertion 
 | Rebuild with `scripts/build-app.sh`, open the app, Start | Live with no new camera or OBS prompt | hbt7 |
 | Start, then `kill -9` the app, then open it again | The next launch removes the old forward | w6fh |
 
-Release the lease: `~/.agents/skills/android-dev/scripts/devlease release phone <you>`.
+Release the lease: `qm release phone <you>`.
 
 ## Optional, longer
 
