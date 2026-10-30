@@ -10,5 +10,5 @@
 ## Docs and bugs
 
 Docs: docs
-Bugs: kata project android-webcam
+Bugs: deckhand project android-webcam
 Visibility: public
