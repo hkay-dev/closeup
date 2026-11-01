@@ -6,10 +6,9 @@
 # grants, when its files go, android-webcam#6fx8) and the new build opens at the next Restart, which quits and reopens
 # the app. Deckhand records the installed commit; it never pushes either, `deckhand ship run` does that.
 #
-# build-app.sh signs ad hoc, which macOS treats as a new app on every build. This re-signs the installed
-# copy with "Closeup Local Signing" (a self-signed certificate in the login keychain, made once like
-# Skylight's), so camera, microphone and local network grants carry across ships. dev.sh builds keep
-# the ad-hoc signature. A certificate change is a new identity and resets the grants once.
+# build-app.sh and this script sign with "Vesper Self-Signed" (the one self-signed certificate every Mac app
+# uses, in the login keychain), so camera, microphone and local network grants carry across ships. A certificate
+# change is a new identity and resets the grants once.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -17,7 +16,7 @@ root=$PWD
 destination="/Applications/Closeup.app"
 [[ -w /Applications ]] || destination="$HOME/Applications/Closeup.app"
 destination="${CLOSEUP_INSTALL_DESTINATION:-$destination}"
-identity="Closeup Local Signing"
+identity="Vesper Self-Signed"
 
 dirty="$(git status --porcelain --untracked-files=no)"
 if [[ -n "$dirty" ]]; then
@@ -28,7 +27,7 @@ fi
 commit="$(git rev-parse HEAD)"
 
 if ! security find-identity -v -p codesigning | grep -q "\"$identity\""; then
-    echo "The signing identity \"$identity\" is missing from the login keychain; docs/working-here.md says how it was made." >&2
+    echo "The signing identity \"$identity\" is missing from the login keychain; docs/working-here.md names the shared certificate." >&2
     exit 1
 fi
 

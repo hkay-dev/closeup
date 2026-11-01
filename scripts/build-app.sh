@@ -31,5 +31,6 @@ cp Resources/scrcpy-LICENSE.txt "$app/Contents/Resources/scrcpy-LICENSE.txt"
 cp LICENSE NOTICE "$app/Contents/Resources/"
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp Resources/obs-camera.mp4 "$app/Contents/Resources/obs-camera.mp4"
-codesign --force --sign - "$app"
+# Every Mac app signs with the one shared identity, dev builds too, so macOS keeps one code identity per app.
+codesign --force --sign "Vesper Self-Signed" "$app"
 printf '%s\n' "$PWD/$app"

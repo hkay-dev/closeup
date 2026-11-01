@@ -26,7 +26,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-binary="${CLOSEUP_APP:-$root/build/Closeup.app/Contents/MacOS/Closeup}"
+bundle="${CLOSEUP_APP:-$root/build/Closeup.app}"
 # One instance per checkout, so worktrees can each run their own.
 pointer="${XDG_CACHE_HOME:-$HOME/.cache}/closeup/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
 
@@ -52,7 +52,7 @@ ctl() {
 }
 
 start() {
-    [[ -x "$binary" ]] || die "no app at $binary. Run scripts/dev.sh build, or set CLOSEUP_APP."
+    [[ -x "$bundle/Contents/MacOS/Closeup" ]] || die "no app at $bundle. Run scripts/dev.sh build, or set CLOSEUP_APP."
     if [[ -f "$pointer" && -S "$(<"$pointer")/control.sock" ]] && python3 "$root/scripts/dev-ctl.py" "$(<"$pointer")" ping >/dev/null 2>&1; then
         die "a dev instance is already running in $(<"$pointer"). Run scripts/dev.sh stop first."
     fi
@@ -67,15 +67,17 @@ for arg in sys.argv[2:]:
     else: key, value = arg.split("=", 1); seed[key] = value
 json.dump(seed, open(sys.argv[1] + "/seed.json", "w"))' "$dir" "$@"
     fi
-    CLOSEUP_DEV_DIR="$dir" nohup "$binary" >"$dir/app.log" 2>&1 &
-    echo $! >"$dir/pid"
-    disown
+    # open -g -j -n starts a background instance that never takes the front, the keyboard or a Space; a bare binary
+    # from a shell would (docs/dev-automation.md). open can't hand back a pid, so it comes from the socket's owner.
+    : >"$dir/app.log"
+    open -g -j -n --stdout "$dir/app.log" --stderr "$dir/app.log" --env "CLOSEUP_DEV_DIR=$dir" "$bundle"
     local tries=0
     until python3 "$root/scripts/dev-ctl.py" "$dir" ping >/dev/null 2>&1; do
-        kill -0 "$(<"$dir/pid")" 2>/dev/null || { cat "$dir/app.log" >&2; die "the app exited before its control socket came up."; }
-        (( ++tries < 100 )) || die "the control socket never answered. Log: $dir/app.log"
+        (( ++tries < 100 )) || { cat "$dir/app.log" >&2; die "the control socket never answered. Log: $dir/app.log"; }
         sleep 0.2
     done
+    lsof -t "$dir/control.sock" | head -n 1 >"$dir/pid"
+    [[ -s "$dir/pid" ]] || die "the app answered but its pid wasn't found. Log: $dir/app.log"
     # The first phone list comes from adb a moment after launch; a reply before it would show a stale header.
     tries=0
     until [[ "$(python3 "$root/scripts/dev-ctl.py" "$dir" menu 2>/dev/null | jq -r .ready)" == true ]]; do
