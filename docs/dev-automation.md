@@ -43,7 +43,7 @@ The control path exists only when `CLOSEUP_DEV_DIR` names an absolute directory 
 
 ## Commands
 
-Run `scripts/build-app.sh` once (or `scripts/dev.sh build`), then use `scripts/dev.sh`. Every command prints JSON and exits 1 when the reply says `"ok": false`. Take the desktop for anything that screenshots: `qm with desktop NAME -- scripts/dev.sh smoke`. A dev instance runs next to the real app without trouble; both use the one adb server.
+Run `scripts/dev.sh` with no arguments to build (debug, into `build/debug/Closeup.app`, under `qm with build`) and start the instance; `scripts/dev.sh build` only builds. Then use `scripts/dev.sh`. Every command prints JSON and exits 1 when the reply says `"ok": false`. Take the desktop for anything that screenshots: `qm with desktop NAME -- scripts/dev.sh smoke`. A dev instance runs next to the real app without trouble; both use the one adb server.
 
 | Command | What it does |
 | --- | --- |

@@ -9,8 +9,8 @@ else
     server=build/scrcpy-server-webcam.jar
 fi
 
-# Flags (--jobs, build system) come from the shared Mac env. `scripts/dev.sh build` sets CLOSEUP_CONFIG=debug; ship
-# and release.sh build release. UNIVERSAL=1 builds for Apple silicon and Intel Macs in one binary (release.sh does);
+# Flags (--jobs, build system) come from the shared Mac env. `scripts/dev.sh build` sets CLOSEUP_CONFIG=debug and writes
+# build/debug/Closeup.app; ship and release.sh build release into build/Closeup.app. UNIVERSAL=1 builds for Apple silicon and Intel Macs in one binary (release.sh does);
 # otherwise this Mac's chip.
 . mac-env.sh || exit 1
 mac_swift_build_flags
@@ -19,7 +19,10 @@ arch_flags=()
 if [[ "${UNIVERSAL:-}" == 1 ]]; then arch_flags=(--arch arm64 --arch x86_64); fi
 swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"}
 binary_dir=$(swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
+# Debug (check, dev) and release (ship, release.sh) bundles live apart, so a check running during a ship can't hand the
+# ship a debug bundle (android-webcam#ankw).
 app='build/Closeup.app'
+if [[ "$config" == debug ]]; then app='build/debug/Closeup.app'; fi
 rm -rf "$app/Contents/Resources"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_dir/Closeup" "$app/Contents/MacOS/Closeup"

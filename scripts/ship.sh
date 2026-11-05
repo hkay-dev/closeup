@@ -31,8 +31,8 @@ ship_lock
 ship_stage
 
 echo "::step Build the app"
-ship_build scripts/build-app.sh
-cp -R build/Closeup.app "$app" # a copy, so the move by ship_install leaves build/ alone
+ship_build env CLOSEUP_CONFIG=release scripts/build-app.sh
+cp -R build/Closeup.app "$app" # the release bundle only (debug builds go to build/debug); a copy, so the move by ship_install leaves build/ alone
 
 ship_sign
 ship_check_requirement

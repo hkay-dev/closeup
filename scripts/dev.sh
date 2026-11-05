@@ -3,7 +3,8 @@
 # The instance has its own defaults, no status item, windows parked below the desktop, and a control
 # socket that only exists because CLOSEUP_DEV_DIR is set. Nothing shows on screen.
 #
-#   scripts/dev.sh build                 build the app, debug (scripts/build-app.sh)
+#   scripts/dev.sh                       build (under qm) and start the instance, like build then start
+#   scripts/dev.sh build                 build the app, debug, into build/debug/Closeup.app (scripts/build-app.sh)
 #   scripts/dev.sh start [KEY=VALUE ...] start the instance; prints its directory. KEY=VALUE (KEY:=JSON) seeds its defaults
 #   scripts/dev.sh stop                  choose Quit, wait for the process, remove the directory
 #   scripts/dev.sh state                 header text, menu items, open windows
@@ -26,7 +27,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-bundle="${CLOSEUP_APP:-$root/build/Closeup.app}"
+bundle="${CLOSEUP_APP:-$root/build/debug/Closeup.app}"
 # One instance per checkout, so worktrees can each run their own.
 pointer="${XDG_CACHE_HOME:-$HOME/.cache}/closeup/dev-current-$(printf %s "$root" | shasum | cut -c1-10)"
 
@@ -36,7 +37,7 @@ die() {
 }
 
 usage() {
-    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -103,7 +104,12 @@ stop() {
 }
 
 command="${1:-}"
-[[ -n "$command" ]] || usage
+if [[ -z "$command" ]]; then
+    # Bare: build under the qm build gate (plain when qm is absent), then start the instance.
+    if command -v qm >/dev/null 2>&1; then qm with build android-webcam -- "$root/scripts/dev.sh" build >&2; else "$root/scripts/dev.sh" build >&2; fi
+    start
+    exit
+fi
 shift
 case "$command" in
     build) CLOSEUP_CONFIG=debug exec "$root/scripts/build-app.sh" ;;
