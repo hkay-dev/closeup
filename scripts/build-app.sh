@@ -9,11 +9,16 @@ else
     server=build/scrcpy-server-webcam.jar
 fi
 
-# UNIVERSAL=1 builds for Apple silicon and Intel Macs in one binary (release.sh does); otherwise this Mac's chip.
+# Flags (--jobs, build system) come from the shared Mac env. `scripts/dev.sh build` sets CLOSEUP_CONFIG=debug; ship
+# and release.sh build release. UNIVERSAL=1 builds for Apple silicon and Intel Macs in one binary (release.sh does);
+# otherwise this Mac's chip.
+. mac-env.sh || exit 1
+mac_swift_build_flags
+config="${CLOSEUP_CONFIG:-release}"
 arch_flags=()
 if [[ "${UNIVERSAL:-}" == 1 ]]; then arch_flags=(--arch arm64 --arch x86_64); fi
-swift build -c release ${arch_flags[@]+"${arch_flags[@]}"}
-binary_dir=$(swift build -c release ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
+swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"}
+binary_dir=$(swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
 app='build/Closeup.app'
 rm -rf "$app/Contents/Resources"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
