@@ -45,10 +45,16 @@ if ! grep -qx "SCRCPY_VERSION_NAME=$version" "$build_script"; then
 fi
 
 export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
-if [[ ! -f "$ANDROID_HOME/platforms/android-36/android.jar" || ! -x "$ANDROID_HOME/build-tools/36.0.0/d8" ]]; then
-    echo "ANDROID_HOME ($ANDROID_HOME) needs platforms;android-36 and build-tools;36.0.0. See README > Build." >&2
+# scrcpy pins build-tools 36.0.0; an SDK update can remove it, so take the newest installed one then.
+build_tools=36.0.0
+if [[ ! -x "$ANDROID_HOME/build-tools/$build_tools/d8" ]]; then
+    build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name d8 -perm -u+x 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -V | tail -n 1)
+fi
+if [[ ! -f "$ANDROID_HOME/platforms/android-36/android.jar" || -z "$build_tools" ]]; then
+    echo "ANDROID_HOME ($ANDROID_HOME) needs platforms;android-36 and build-tools (36.0.0 or newer). See README > Build." >&2
     exit 1
 fi
+export ANDROID_BUILD_TOOLS=$build_tools
 if [[ -z "${JAVA_HOME:-}" ]]; then
     JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
     if [[ ! -d "$JAVA_HOME" ]]; then

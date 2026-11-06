@@ -54,7 +54,7 @@ scripts/build-server.sh
 
 It clones tag v5.0.1 into `build/cache/scrcpy-src` if it's missing and checks the commit, exports a clean copy to `build/cache/scrcpy-webcam`, applies the patch, sets the version name, and runs scrcpy's own `server/build_without_gradle.sh`. The result is `build/scrcpy-server-webcam.jar`. It's skipped when that file is newer than the patch and the script.
 
-It needs `ANDROID_HOME` (default `~/Library/Android/sdk`) with platform 36 and build-tools 36.0.0, and a JDK: `JAVA_HOME`, else Android Studio's bundled JBR, else Homebrew's `openjdk@17`.
+It needs `ANDROID_HOME` (default `~/Library/Android/sdk`) with platform 36 and build-tools 36.0.0 (without 36.0.0 it uses the newest build-tools installed), and a JDK: `JAVA_HOME`, else Android Studio's bundled JBR, else Homebrew's `openjdk@17`.
 
 To change the patch, edit a clone of v5.0.1, then write it with `git add -N <new files> && git diff v5.0.1 > server/webcam.patch`.
 
