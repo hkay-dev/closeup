@@ -17,6 +17,14 @@ struct AndroidDevice: Equatable {
     /// product, model and device from adb, for matching an ip:port entry to its USB twin, which has no serial to compare.
     var fingerprint = ""
     var authorized: Bool { status == "device" }
+
+    /// The same phone listed over its other link: the phone serials match, or for an ip:port entry, which has none,
+    /// product, model and device do.
+    func isTwin(of other: AndroidDevice) -> Bool {
+        guard serial != other.serial, wireless != other.wireless else { return false }
+        if let mine = hardwareSerial, let theirs = other.hardwareSerial { return mine == theirs }
+        return !fingerprint.isEmpty && fingerprint == other.fingerprint
+    }
 }
 
 /// A failure of the link to the phone: adb, the port forward or the video socket.

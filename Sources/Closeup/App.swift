@@ -118,6 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var restarting = false
     /// and starts the new one without a "live" notice.
     private var quietStart = false
+    /// Until when a USB / Wi-Fi choice made mid-call waits for adb to list the phone on the chosen link.
+    private var linkWantedUntil: Date?
     private var hotNotified = false
     private var cableLoose = false
     /// One plain line for the header: the last error or a warning.
@@ -787,6 +789,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             add(Self.lockedNote(), "locked")
         }
         phoneMenu.addItem(.separator())
+        phoneMenu.addItem(Self.sectionHeader("Connection"))
+        for (index, title) in ["USB", "Wi-Fi"].enumerated() {
+            let wireless = index == 1
+            let item = NSMenuItem(title: title, action: #selector(selectConnection(_:)), keyEquivalent: "")
+            Self.describe(item, wireless ? "When the phone has Wireless debugging on" : "Only phones on a cable")
+            item.target = self
+            item.tag = index
+            item.state = Wireless.enabled == wireless ? .on : .off
+            item.image = Self.symbol(wireless ? ["wifi"] : ["cable.connector", "cable.connector.horizontal"])
+            add(item, "link-\(title)")
+        }
+        phoneMenu.addItem(.separator())
         let connect = NSMenuItem(title: "Connect a Phone over Wi-Fi…", action: #selector(showPairing), keyEquivalent: "")
         connect.target = self
         connect.image = Self.symbol(["wifi"])
@@ -955,6 +969,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 // Offline or connecting in between doesn't reset this, so a blink through those states stays a blink.
                 savedMissingSince = Date()
             }
+            followLink()
         case let .failure(error):
             // A failed stream isn't an unplug, so it leaves autoStartBlocked alone.
             devices = []
@@ -1551,12 +1566,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    /// Settings' Phones over Wi-Fi switch: the phone list follows at once, and paired phones connect while it's on.
+    /// Settings' Phones over Wi-Fi switch and the menu's Connection rows: the phone list follows at once, paired phones
+    /// connect while it's on, and a running webcam moves to the chosen link. Either one wins over CLOSEUP_WIRELESS for
+    /// the rest of the run.
     private func wirelessChanged() {
+        unsetenv(Wireless.environmentKey)
         if Wireless.enabled { wirelessConnector.start() } else { wirelessConnector.stop() }
+        linkWantedUntil = capture.running ? Date().addingTimeInterval(20) : nil
         watcher.refresh()
         phoneMenuKey = nil
         refreshUI()
+    }
+
+    /// The Phone menu's Connection rows: USB lists only phones on a cable, Wi-Fi is the Phones over Wi-Fi switch.
+    @objc private func selectConnection(_ sender: NSMenuItem) {
+        let wireless = sender.tag == 1
+        guard wireless != Wireless.enabled else { return }
+        Prefs.defaults.set(wireless, forKey: Wireless.defaultsKey)
+        wirelessChanged()
+    }
+
+    /// After a USB / Wi-Fi change mid-call, restarts the webcam on the same phone over the chosen link once adb lists
+    /// it there, keeping the call's clock as the cool-down switch does. A phone with no twin keeps its link.
+    private func followLink() {
+        guard let until = linkWantedUntil else { return }
+        guard Date() < until, capture.running, !stopRequested, !restarting, let device = runDevice,
+              device.wireless != Wireless.enabled else { linkWantedUntil = nil; return }
+        guard let twin = devices.first(where: { $0.authorized && $0.wireless == Wireless.enabled && $0.isTwin(of: device) }) else { return }
+        linkWantedUntil = nil
+        // The same phone has the same lenses, so the restart keeps the lens before the twin's own list comes in.
+        if lensList(twin.serial).isEmpty { lenses[twin.serial] = lensList(device.serial) }
+        restarting = true
+        capture.stop { [weak self] in
+            // Stop or Quit during the switch clears restarting and cancels the restart.
+            guard let self, self.restarting else { return }
+            self.restarting = false
+            self.startCapture(twin, quiet: self.liveSince != nil)
+        }
     }
 
     /// Connect a Phone over Wi-Fi…: turns the switch on, since a paired phone is no use while the app hides it.

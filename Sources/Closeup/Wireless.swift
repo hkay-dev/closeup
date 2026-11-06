@@ -3,8 +3,8 @@ import Foundation
 import os
 
 /// Phones on wireless debugging (kata:android-webcam#b60q), off by default so the app stays USB only. Settings'
-/// "Phones over Wi-Fi" switch sets `wirelessAdb` and takes effect at once; `CLOSEUP_WIRELESS=1` (or `0`) in
-/// the environment wins over it, for dev runs.
+/// "Phones over Wi-Fi" switch and the Phone menu's Connection rows set `wirelessAdb` and take effect at once;
+/// `CLOSEUP_WIRELESS=1` (or `0`) in the environment wins over it until either one changes it, for dev runs.
 enum Wireless {
     static let defaultsKey = "wirelessAdb"
     static let environmentKey = "CLOSEUP_WIRELESS"

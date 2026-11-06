@@ -153,6 +153,7 @@ Steps:
 2. Phone › Connect a Phone over Wi-Fi… turns the switch on and opens a window with a QR code (`WIFI:T:ADB;S:Closeup-…;P:…;;`). The phone's Wireless debugging › Pair device with QR code scans it, the app finds that name under `_adb-tls-pairing._tcp` and runs `adb pair`; or the phone's six-digit pairing code goes in the window's field. The window says when the phone is connected.
 3. The Phone menu marks each phone with a Wi-Fi or cable symbol, the header reads "Polaris · Wi-Fi", and capture logs a line per second to the `wireless-latency` category.
 4. Off: wireless entries are hidden and the menu says "No USB phone connected".
+5. Phone › Connection › USB or Wi-Fi is the same switch from the menu, and it beats `CLOSEUP_WIRELESS` for the rest of the run. Changed while live, the webcam restarts on the same phone over the chosen link once adb lists it there (20 s window), keeping the call's clock and lens; a phone with no twin on that link keeps streaming where it is.
 Touches: Wireless.swift (switch, BonjourBrowser, WirelessConnector, WirelessPairing), PairingView, DeviceWatcher.refresh, Settings, `--diagnose` wireless fields, Info.plist local network keys.
 
 ## Headless diagnose and probe (rare)
