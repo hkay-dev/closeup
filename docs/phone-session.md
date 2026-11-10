@@ -11,11 +11,11 @@ About 90 minutes without the optional parts at the end. The order keeps the phon
 
 ## Before
 
-1. The agent takes the phone lease: `qm take phone <you> --ttl 10800`.
-2. Plug in the S25 Ultra over USB-C and unlock it. `adb devices -l` lists it with a `usb:` field.
-3. Quit any running Closeup. Build once: `scripts/build-app.sh`.
-4. `'build/Closeup.app/Contents/MacOS/Closeup' --diagnose` shows the phone under `usb_devices` and `obs_camera_installed: true`.
-5. Start the app from a terminal so its log is kept: `'build/Closeup.app/Contents/MacOS/Closeup' 2>&1 | tee /tmp/aw-phone.log`. Settings > Notifications on.
+1. Build before taking the phone: `qm with build android-webcam -- scripts/build-app.sh`.
+2. After Harsha authorizes the phone session, take its lease: `qm take phone <you> --ttl 10800`.
+3. Ask Harsha to connect and unlock the phone; inspect `adb devices -l`.
+4. Run `build/Closeup.app/Contents/MacOS/Closeup --diagnose`.
+5. Open the bundle with `open -g -j build/Closeup.app`; let Harsha perform the interactive steps.
 6. In a second terminal, keep the phone's temperature in view: `watch -n 10 "adb shell dumpsys battery | grep temperature"`.
 
 ## 1. Start and the receiving apps (15 min)
