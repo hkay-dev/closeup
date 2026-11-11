@@ -18,7 +18,14 @@ config="${CLOSEUP_CONFIG:-release}"
 arch_flags=()
 if [[ "${UNIVERSAL:-}" == 1 ]]; then arch_flags=(--arch arm64 --arch x86_64); fi
 swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"}
-binary_dir=$(swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
+bin_cache=".build/.bin-path-$config-${UNIVERSAL:-0}"
+binary_dir=""
+[[ -f "$bin_cache" ]] && binary_dir="$(<"$bin_cache")"
+if [[ -z "$binary_dir" || ! -f "$binary_dir/Closeup" ]]; then
+    binary_dir=$(swift build -c "$config" "${MAC_SWIFT_BUILD_FLAGS[@]}" ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
+    mkdir -p .build
+    printf '%s\n' "$binary_dir" >"$bin_cache"
+fi
 # Debug (check, dev) and release (ship, release.sh) bundles live apart, so a check running during a ship can't hand the
 # ship a debug bundle (android-webcam#ankw).
 app='build/Closeup.app'
