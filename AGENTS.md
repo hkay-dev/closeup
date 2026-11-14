@@ -25,7 +25,7 @@ App facts:
 - Device: S25 Ultra, Android 17 phone and the M5 Max MacBook Pro.
 - Arch: arm64 only: Apple silicon Mac (no Intel) and an arm64 phone.
 - No accessibility or other languages work: Harsha never wants it.
-- Follow ~/Development/core/foundry/repo/docs/standards/mac-dev-builds.md for Mac builds.
+- Follow ~/.local/state/foundry/docs/standards/mac-dev-builds.md for Mac builds.
 - The phone only after Harsha says go, with the lease.
 - No GitHub Actions, ever.
 <!-- foundry:shared end -->
